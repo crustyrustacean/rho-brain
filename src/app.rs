@@ -2,11 +2,15 @@
 
 use topcoat::{
     Result,
-    router::{Slot, layout, page},
-    view::{component, view},
+    router::{Slot, layout},
+    view::{Unescaped, view},
 };
 
 mod api;
+mod document;
+mod home;
+
+const CSS: &str = include_str!("app/style.css");
 
 // ── Layout ─────────────────────────────────────────
 
@@ -14,35 +18,27 @@ mod api;
 pub async fn root_layout(slot: Slot<'_>) -> Result {
     view! {
         <!DOCTYPE html>
-        <html>
+        <html lang="en">
+            <head>
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>"rho-brain"</title>
+                <style>(Unescaped::new_unchecked(CSS))</style>
+            </head>
             <body>
-                <nav>
-                    <a href="/">"Home"</a>
-                </nav>
-                <main>
+                <header>
+                    <div class="container header-inner">
+                        <h1><a href="/">"rho-brain"</a></h1>
+                        <nav>
+                            <a href="/">"Home"</a>
+                            <a href="/documents/new">"+ New Document"</a>
+                        </nav>
+                    </div>
+                </header>
+                <main class="container">
                     (slot.await?)
                 </main>
             </body>
         </html>
     }
-}
-
-// ── Component ─────────────────────────────────────
-
-#[component]
-pub async fn hello(name: &str) -> Result {
-    view! {
-        <h1>
-            "Hello, "
-            (name)
-            "!"
-        </h1>
-    }
-}
-
-// ── Pages ─────────────────────────────────────────
-
-#[page("/")]
-pub async fn home() -> Result {
-    view! { hello(name: "World") }
 }

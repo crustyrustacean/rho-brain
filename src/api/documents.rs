@@ -21,7 +21,7 @@ fn db(cx: &Cx) -> Db {
 /// A bare `upsert_by_name(...)` is rejected by toasty ("upsert requires at
 /// least one update assignment"), so use `or_ignore`: it returns `Some` on
 /// insert and `None` on conflict, in which case we fetch the existing row.
-async fn get_or_create_tag(db: &mut Db, tag_name: &str) -> Result<Tag> {
+pub(crate) async fn get_or_create_tag(db: &mut Db, tag_name: &str) -> Result<Tag> {
     let inserted = Tag::upsert_by_name(tag_name)
         .or_ignore()
         .exec(&mut *db)
