@@ -1,0 +1,10 @@
+# topcoat playground gitignore
+
+# Rho Coding Agent Configuration
+.rho
+
+# Logs
+logs
+
+# Build artifacts
+/target
