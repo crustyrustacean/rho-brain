@@ -3,6 +3,9 @@
 # Rho Coding Agent Configuration
 .rho
 
+# Environment variables
+.env
+
 # Logs
 logs
 

@@ -1,12 +1,12 @@
 // src/api/stats.rs
 
 use serde::Serialize;
-use topcoat::{
-    context::{app_context, Cx},
-    router::{route, Json},
-    Result,
-};
 use toasty::Db;
+use topcoat::{
+    Result,
+    context::{Cx, app_context},
+    router::{Json, route},
+};
 
 use crate::models::{Document, Tag};
 

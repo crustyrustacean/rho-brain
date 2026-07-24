@@ -1,10 +1,10 @@
 // src/app.rs
 
 use topcoat::{
-    asset::{asset, Asset},
-    router::{layout, page, Slot},
-    view::{component, view},
     Result,
+    asset::{Asset, asset},
+    router::{Slot, layout, page},
+    view::{component, view},
 };
 
 const FAVICON: Asset = asset!("assets/favicon.png");

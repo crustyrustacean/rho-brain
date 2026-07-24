@@ -1,14 +1,14 @@
 // src/api/search.rs
 
 use serde::{Deserialize, Serialize};
-use topcoat::{
-    context::{app_context, Cx},
-    router::{bad_request, query_params, route, Json},
-    Result,
-};
 use toasty::Db;
+use topcoat::{
+    Result,
+    context::{Cx, app_context},
+    router::{Json, bad_request, query_params, route},
+};
 
-use crate::models::Document;
+use crate::models::{Document, DocumentTag, Tag};
 
 fn db(cx: &Cx) -> Db {
     app_context::<Db>(cx).clone()
@@ -48,7 +48,6 @@ pub async fn search_post(
 
 #[route(GET "/rb/search")]
 pub async fn search_get(cx: &Cx) -> Result<Json<SearchResponse>> {
-    #[derive(Deserialize)]
     #[query_params(error = bad_request)]
     struct SearchQuery {
         q: String,
@@ -56,11 +55,11 @@ pub async fn search_get(cx: &Cx) -> Result<Json<SearchResponse>> {
         offset: Option<usize>,
     }
 
-    let params = query_params::<SearchQuery>(cx)
-        .map_err(|_| bad_request("missing query parameter 'q'"))?;
+    let params =
+        query_params::<SearchQuery>(cx).map_err(|_| bad_request("missing query parameter 'q'"))?;
 
     let input = SearchRequest {
-        query: params.q,
+        query: params.q.clone(),
         tags: None,
         limit: params.limit,
         offset: params.offset,
@@ -69,10 +68,7 @@ pub async fn search_get(cx: &Cx) -> Result<Json<SearchResponse>> {
     perform_search(cx, input).await
 }
 
-async fn perform_search(
-    cx: &Cx,
-    input: SearchRequest,
-) -> Result<Json<SearchResponse>> {
+async fn perform_search(cx: &Cx, input: SearchRequest) -> Result<Json<SearchResponse>> {
     let mut db = db(cx);
     let limit = input.limit.unwrap_or(20);
     let offset = input.offset.unwrap_or(0);
@@ -92,14 +88,33 @@ async fn perform_search(
 
     if let Some(tags) = input.tags {
         if !tags.is_empty() {
-            // Filter to documents that have at least one of the specified tags
+            // Filter to documents that have at least one of the specified tags.
+            //
+            // Toasty 0.9 mis-lowers a `belongs_to` chain inside `any()`
+            // (`tag().name()` panics / mis-matches), so resolve tag names to
+            // IDs first and filter the join table on the primitive `tag_id`.
+            let matching_tags = Tag::all()
+                .filter(Tag::fields().name().in_list(tags))
+                .exec(&mut db)
+                .await
+                .map_err(topcoat::router::internal_server_error)?;
+
+            let tag_ids: Vec<i64> = matching_tags.iter().map(|tag| tag.id).collect();
+
+            if tag_ids.is_empty() {
+                // No such tags — no document can match.
+                return Ok(Json(SearchResponse {
+                    results: Vec::new(),
+                    query: input.query,
+                    limit,
+                    offset,
+                }));
+            }
+
             query = query.filter(
                 Document::fields()
                     .document_tags()
-                    .any()
-                    .tag()
-                    .name()
-                    .in_list(tags),
+                    .any(DocumentTag::fields().tag_id().in_list(tag_ids)),
             );
         }
     }
@@ -124,9 +139,7 @@ async fn perform_search(
             let tag = crate::models::Tag::get_by_id(&mut db, &dt.tag_id)
                 .await
                 .map_err(topcoat::router::internal_server_error)?;
-            if let Some(tag) = tag {
-                tag_names.push(tag.name);
-            }
+            tag_names.push(tag.name);
         }
 
         // Generate excerpt from content

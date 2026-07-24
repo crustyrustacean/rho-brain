@@ -1,6 +1,6 @@
 // src/app/about.rs
 
-use topcoat::{router::page, view::view, Result};
+use topcoat::{Result, router::page, view::view};
 
 #[page("/about")]
 pub async fn about() -> Result {

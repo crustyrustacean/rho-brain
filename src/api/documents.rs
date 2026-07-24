@@ -1,12 +1,12 @@
 // src/api/documents.rs
 
 use serde::{Deserialize, Serialize};
-use topcoat::{
-    context::{app_context, Cx},
-    router::{bad_request, not_found, path_param, query_params, route, Json, RouterErrorExt},
-    Result,
-};
 use toasty::Db;
+use topcoat::{
+    Result,
+    context::{Cx, app_context},
+    router::{Json, bad_request, not_found, path_param, query_params, route},
+};
 
 use crate::models::{Document, DocumentTag, Metadata, Tag};
 
@@ -16,6 +16,26 @@ fn db(cx: &Cx) -> Db {
     app_context::<Db>(cx).clone()
 }
 
+/// Get-or-create a tag by name.
+///
+/// A bare `upsert_by_name(...)` is rejected by toasty ("upsert requires at
+/// least one update assignment"), so use `or_ignore`: it returns `Some` on
+/// insert and `None` on conflict, in which case we fetch the existing row.
+async fn get_or_create_tag(db: &mut Db, tag_name: &str) -> Result<Tag> {
+    let inserted = Tag::upsert_by_name(tag_name)
+        .or_ignore()
+        .exec(&mut *db)
+        .await
+        .map_err(topcoat::router::internal_server_error)?;
+
+    match inserted {
+        Some(tag) => Ok(tag),
+        None => Tag::get_by_name(db, tag_name)
+            .await
+            .map_err(|e| topcoat::router::internal_server_error(e).into()),
+    }
+}
+
 // ── Path params ─────────────────────────────────────────────────────
 
 #[path_param(error = bad_request)]
@@ -23,7 +43,7 @@ struct DocumentId(String);
 
 // ── Query params ────────────────────────────────────────────────────
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug)]
 #[query_params(error = bad_request)]
 pub struct ListQuery {
     pub limit: Option<usize>,
@@ -84,13 +104,9 @@ pub async fn create_document(
         .map_err(topcoat::router::internal_server_error)?;
 
     // Handle tags
-    let mut tag_names = Vec::new();
     if let Some(tags) = input.tags {
         for tag_name in tags {
-            let tag = Tag::upsert_by_name(&tag_name)
-                .exec(&mut db)
-                .await
-                .map_err(topcoat::router::internal_server_error)?;
+            let tag = get_or_create_tag(&mut db, &tag_name).await?;
 
             DocumentTag::create()
                 .document_id(doc.id)
@@ -98,8 +114,6 @@ pub async fn create_document(
                 .exec(&mut db)
                 .await
                 .map_err(topcoat::router::internal_server_error)?;
-
-            tag_names.push(tag_name);
         }
     }
 
@@ -107,9 +121,7 @@ pub async fn create_document(
     if let Some(meta) = input.metadata {
         if let serde_json::Value::Object(map) = meta {
             for (key, value) in map {
-                let builder = Metadata::create()
-                    .document_id(doc.id)
-                    .key(&key);
+                let builder = Metadata::create().document_id(doc.id).key(&key);
 
                 let builder = match value {
                     serde_json::Value::String(s) => builder.value_text(s),
@@ -132,26 +144,17 @@ pub async fn create_document(
         }
     }
 
-    Ok(Json(DocumentResponse {
-        id: doc.id.to_string(),
-        title: doc.title,
-        content: doc.content,
-        tags: tag_names,
-        metadata: serde_json::json!({}),
-        created_at: doc.created_at.to_string(),
-        updated_at: doc.updated_at.to_string(),
-    }))
+    build_document_response(&mut db, doc).await
 }
 
 #[route(GET "/rb/documents")]
 pub async fn list_documents(cx: &Cx) -> Result<Json<DocumentListResponse>> {
     let mut db = db(cx);
 
-    let query = query_params::<ListQuery>(cx)
-        .unwrap_or(ListQuery {
-            limit: None,
-            offset: None,
-        });
+    let query = query_params::<ListQuery>(cx).unwrap_or(&ListQuery {
+        limit: None,
+        offset: None,
+    });
 
     let limit = query.limit.unwrap_or(50);
     let offset = query.offset.unwrap_or(0);
@@ -181,13 +184,12 @@ pub async fn list_documents(cx: &Cx) -> Result<Json<DocumentListResponse>> {
     }))
 }
 
-#[route(GET "/rb/documents/{id}")]
+#[route(GET "/rb/documents/{document_id}")]
 pub async fn get_document(cx: &Cx) -> Result<Json<DocumentResponse>> {
     let mut db = db(cx);
     let id_str = path_param::<DocumentId>(cx)?;
 
-    let id = uuid::Uuid::parse_str(&id_str)
-        .map_err(|_| bad_request("invalid document id"))?;
+    let id = uuid::Uuid::parse_str(&id_str).map_err(|_| bad_request("invalid document id"))?;
 
     let doc = Document::get_by_id(&mut db, &id)
         .await
@@ -201,7 +203,7 @@ pub async fn get_document(cx: &Cx) -> Result<Json<DocumentResponse>> {
     build_document_response(&mut db, doc).await
 }
 
-#[route(PUT "/rb/documents/{id}")]
+#[route(PUT "/rb/documents/{document_id}")]
 pub async fn update_document(
     cx: &Cx,
     Json(input): Json<UpdateDocumentRequest>,
@@ -209,10 +211,9 @@ pub async fn update_document(
     let mut db = db(cx);
     let id_str = path_param::<DocumentId>(cx)?;
 
-    let id = uuid::Uuid::parse_str(&id_str)
-        .map_err(|_| bad_request("invalid document id"))?;
+    let id = uuid::Uuid::parse_str(&id_str).map_err(|_| bad_request("invalid document id"))?;
 
-    let doc = Document::get_by_id(&mut db, &id)
+    let mut doc = Document::get_by_id(&mut db, &id)
         .await
         .map_err(topcoat::router::internal_server_error)?;
 
@@ -220,7 +221,8 @@ pub async fn update_document(
         return Err(not_found().into());
     }
 
-    // Update fields
+    // Update fields. The instance-level `update()` borrows `doc` mutably and
+    // applies the changes in place on `exec`, returning `()`.
     let mut update = doc.update();
     if let Some(title) = input.title {
         update = update.title(title);
@@ -228,7 +230,8 @@ pub async fn update_document(
     if let Some(content) = input.content {
         update = update.content(content);
     }
-    let doc = update
+
+    update
         .exec(&mut db)
         .await
         .map_err(topcoat::router::internal_server_error)?;
@@ -244,10 +247,7 @@ pub async fn update_document(
 
         // Add new tags
         for tag_name in tags {
-            let tag = Tag::upsert_by_name(&tag_name)
-                .exec(&mut db)
-                .await
-                .map_err(topcoat::router::internal_server_error)?;
+            let tag = get_or_create_tag(&mut db, &tag_name).await?;
 
             DocumentTag::create()
                 .document_id(doc.id)
@@ -268,9 +268,7 @@ pub async fn update_document(
 
         if let serde_json::Value::Object(map) = meta {
             for (key, value) in map {
-                let builder = Metadata::create()
-                    .document_id(doc.id)
-                    .key(&key);
+                let builder = Metadata::create().document_id(doc.id).key(&key);
 
                 let builder = match value {
                     serde_json::Value::String(s) => builder.value_text(s),
@@ -296,13 +294,12 @@ pub async fn update_document(
     build_document_response(&mut db, doc).await
 }
 
-#[route(DELETE "/rb/documents/{id}")]
+#[route(DELETE "/rb/documents/{document_id}")]
 pub async fn delete_document(cx: &Cx) -> Result<Json<serde_json::Value>> {
     let mut db = db(cx);
     let id_str = path_param::<DocumentId>(cx)?;
 
-    let id = uuid::Uuid::parse_str(&id_str)
-        .map_err(|_| bad_request("invalid document id"))?;
+    let id = uuid::Uuid::parse_str(&id_str).map_err(|_| bad_request("invalid document id"))?;
 
     let mut doc = Document::get_by_id(&mut db, &id)
         .await
@@ -324,10 +321,7 @@ pub async fn delete_document(cx: &Cx) -> Result<Json<serde_json::Value>> {
 
 // ── Response builder ────────────────────────────────────────────────
 
-async fn build_document_response(
-    db: &mut Db,
-    doc: Document,
-) -> Result<Json<DocumentResponse>> {
+async fn build_document_response(db: &mut Db, doc: Document) -> Result<Json<DocumentResponse>> {
     // Load tags
     let doc_tags = DocumentTag::filter_by_document_id(doc.id)
         .exec(db)
@@ -339,9 +333,7 @@ async fn build_document_response(
         let tag = Tag::get_by_id(&mut *db, &dt.tag_id)
             .await
             .map_err(topcoat::router::internal_server_error)?;
-        if let Some(tag) = tag {
-            tag_names.push(tag.name);
-        }
+        tag_names.push(tag.name);
     }
 
     // Load metadata
