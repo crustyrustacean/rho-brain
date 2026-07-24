@@ -11,3 +11,6 @@ logs
 
 # Build artifacts
 /target
+
+# Database
+*.db

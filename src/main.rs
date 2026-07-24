@@ -7,7 +7,6 @@ mod app;
 mod models;
 
 use topcoat::{
-    asset::{AssetBundle, RouterBuilderAssetExt},
     router::{Router, RouterBuilderDiscoverExt},
 };
 
@@ -42,7 +41,6 @@ async fn main() -> std::io::Result<()> {
     topcoat::start(
         Router::builder()
             .discover()
-            .assets(AssetBundle::load()?)
             .app_context(db.clone())
             .build(),
     )
