@@ -2842,6 +2842,8 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 name = "rho-brain"
 version = "0.2.0"
 dependencies = [
+ "bytes",
+ "http",
  "jiff",
  "pulldown-cmark",
  "serde",

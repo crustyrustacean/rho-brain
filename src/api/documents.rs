@@ -16,6 +16,16 @@ fn db(cx: &Cx) -> Db {
     app_context::<Db>(cx).clone()
 }
 
+/// Map a toasty error to an HTTP error: a missing record is a 404, anything
+/// else is a 500.
+fn db_error_or_not_found(e: toasty::Error) -> topcoat::Error {
+    if e.is_record_not_found() {
+        not_found().into()
+    } else {
+        topcoat::router::internal_server_error(e).into()
+    }
+}
+
 /// Get-or-create a tag by name.
 ///
 /// A bare `upsert_by_name(...)` is rejected by toasty ("upsert requires at
@@ -193,7 +203,7 @@ pub async fn get_document(cx: &Cx) -> Result<Json<DocumentResponse>> {
 
     let doc = Document::get_by_id(&mut db, &id)
         .await
-        .map_err(topcoat::router::internal_server_error)?;
+        .map_err(db_error_or_not_found)?;
 
     // Don't return soft-deleted documents
     if doc.deleted_at.is_some() {
@@ -215,7 +225,7 @@ pub async fn update_document(
 
     let mut doc = Document::get_by_id(&mut db, &id)
         .await
-        .map_err(topcoat::router::internal_server_error)?;
+        .map_err(db_error_or_not_found)?;
 
     if doc.deleted_at.is_some() {
         return Err(not_found().into());
@@ -303,7 +313,7 @@ pub async fn delete_document(cx: &Cx) -> Result<Json<serde_json::Value>> {
 
     let mut doc = Document::get_by_id(&mut db, &id)
         .await
-        .map_err(topcoat::router::internal_server_error)?;
+        .map_err(db_error_or_not_found)?;
 
     if doc.deleted_at.is_some() {
         return Err(not_found().into());
