@@ -5,7 +5,7 @@ use toasty::Db;
 use topcoat::{
     Result,
     context::{Cx, app_context},
-    router::{Json, route},
+    router::{content::Json, route},
 };
 
 use crate::models::{Document, Tag};
@@ -29,7 +29,7 @@ pub async fn stats(cx: &Cx) -> Result<Json<StatsResponse>> {
     let all_docs = Document::all()
         .exec(&mut db)
         .await
-        .map_err(topcoat::router::internal_server_error)?;
+        .map_err(topcoat::router::error::internal_server_error)?;
 
     let active = all_docs.iter().filter(|d| d.deleted_at.is_none()).count();
     let deleted = all_docs.len() - active;
@@ -37,7 +37,7 @@ pub async fn stats(cx: &Cx) -> Result<Json<StatsResponse>> {
     let all_tags = Tag::all()
         .exec(&mut db)
         .await
-        .map_err(topcoat::router::internal_server_error)?;
+        .map_err(topcoat::router::error::internal_server_error)?;
 
     Ok(Json(StatsResponse {
         document_count: all_docs.len(),

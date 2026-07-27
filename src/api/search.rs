@@ -5,7 +5,11 @@ use toasty::Db;
 use topcoat::{
     Result,
     context::{Cx, app_context},
-    router::{Json, bad_request, query_params, route},
+    router::{
+        content::Json,
+        error::bad_request,
+        query_params, route,
+    },
 };
 
 use crate::models::{Document, DocumentTag, Tag};
@@ -97,7 +101,7 @@ async fn perform_search(cx: &Cx, input: SearchRequest) -> Result<Json<SearchResp
                 .filter(Tag::fields().name().in_list(tags))
                 .exec(&mut db)
                 .await
-                .map_err(topcoat::router::internal_server_error)?;
+                .map_err(topcoat::router::error::internal_server_error)?;
 
             let tag_ids: Vec<i64> = matching_tags.iter().map(|tag| tag.id).collect();
 
@@ -124,7 +128,7 @@ async fn perform_search(cx: &Cx, input: SearchRequest) -> Result<Json<SearchResp
         .offset(offset)
         .exec(&mut db)
         .await
-        .map_err(topcoat::router::internal_server_error)?;
+        .map_err(topcoat::router::error::internal_server_error)?;
 
     let mut results = Vec::new();
     for doc in docs {
@@ -132,13 +136,13 @@ async fn perform_search(cx: &Cx, input: SearchRequest) -> Result<Json<SearchResp
         let doc_tags = crate::models::DocumentTag::filter_by_document_id(doc.id)
             .exec(&mut db)
             .await
-            .map_err(topcoat::router::internal_server_error)?;
+            .map_err(topcoat::router::error::internal_server_error)?;
 
         let mut tag_names = Vec::new();
         for dt in doc_tags {
             let tag = crate::models::Tag::get_by_id(&mut db, &dt.tag_id)
                 .await
-                .map_err(topcoat::router::internal_server_error)?;
+                .map_err(topcoat::router::error::internal_server_error)?;
             tag_names.push(tag.name);
         }
 

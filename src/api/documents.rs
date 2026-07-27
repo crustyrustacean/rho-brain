@@ -5,7 +5,11 @@ use toasty::Db;
 use topcoat::{
     Result,
     context::{Cx, app_context},
-    router::{Json, bad_request, not_found, path_param, query_params, route},
+    router::{
+        content::Json,
+        error::{bad_request, not_found},
+        path_param, query_params, route,
+    },
 };
 
 use crate::models::{Document, DocumentTag, Metadata, Tag};
@@ -22,7 +26,7 @@ fn db_error_or_not_found(e: toasty::Error) -> topcoat::Error {
     if e.is_record_not_found() {
         not_found().into()
     } else {
-        topcoat::router::internal_server_error(e).into()
+        topcoat::router::error::internal_server_error(e).into()
     }
 }
 
@@ -36,13 +40,13 @@ pub(crate) async fn get_or_create_tag(db: &mut Db, tag_name: &str) -> Result<Tag
         .or_ignore()
         .exec(&mut *db)
         .await
-        .map_err(topcoat::router::internal_server_error)?;
+        .map_err(topcoat::router::error::internal_server_error)?;
 
     match inserted {
         Some(tag) => Ok(tag),
         None => Tag::get_by_name(db, tag_name)
             .await
-            .map_err(|e| topcoat::router::internal_server_error(e).into()),
+            .map_err(|e| topcoat::router::error::internal_server_error(e).into()),
     }
 }
 
@@ -111,7 +115,7 @@ pub async fn create_document(
         .content(&input.content)
         .exec(&mut db)
         .await
-        .map_err(topcoat::router::internal_server_error)?;
+        .map_err(topcoat::router::error::internal_server_error)?;
 
     // Handle tags
     if let Some(tags) = input.tags {
@@ -123,7 +127,7 @@ pub async fn create_document(
                 .tag_id(tag.id)
                 .exec(&mut db)
                 .await
-                .map_err(topcoat::router::internal_server_error)?;
+                .map_err(topcoat::router::error::internal_server_error)?;
         }
     }
 
@@ -149,7 +153,7 @@ pub async fn create_document(
                 builder
                     .exec(&mut db)
                     .await
-                    .map_err(topcoat::router::internal_server_error)?;
+                    .map_err(topcoat::router::error::internal_server_error)?;
             }
         }
     }
@@ -176,7 +180,7 @@ pub async fn list_documents(cx: &Cx) -> Result<Json<DocumentListResponse>> {
         .offset(offset)
         .exec(&mut db)
         .await
-        .map_err(topcoat::router::internal_server_error)?;
+        .map_err(topcoat::router::error::internal_server_error)?;
 
     let mut responses = Vec::new();
     for doc in docs {
@@ -244,7 +248,7 @@ pub async fn update_document(
     update
         .exec(&mut db)
         .await
-        .map_err(topcoat::router::internal_server_error)?;
+        .map_err(topcoat::router::error::internal_server_error)?;
 
     // Replace tags if provided
     if let Some(tags) = input.tags {
@@ -253,7 +257,7 @@ pub async fn update_document(
             .delete()
             .exec(&mut db)
             .await
-            .map_err(topcoat::router::internal_server_error)?;
+            .map_err(topcoat::router::error::internal_server_error)?;
 
         // Add new tags
         for tag_name in tags {
@@ -264,7 +268,7 @@ pub async fn update_document(
                 .tag_id(tag.id)
                 .exec(&mut db)
                 .await
-                .map_err(topcoat::router::internal_server_error)?;
+                .map_err(topcoat::router::error::internal_server_error)?;
         }
     }
 
@@ -274,7 +278,7 @@ pub async fn update_document(
             .delete()
             .exec(&mut db)
             .await
-            .map_err(topcoat::router::internal_server_error)?;
+            .map_err(topcoat::router::error::internal_server_error)?;
 
         if let serde_json::Value::Object(map) = meta {
             for (key, value) in map {
@@ -296,7 +300,7 @@ pub async fn update_document(
                 builder
                     .exec(&mut db)
                     .await
-                    .map_err(topcoat::router::internal_server_error)?;
+                    .map_err(topcoat::router::error::internal_server_error)?;
             }
         }
     }
@@ -324,7 +328,7 @@ pub async fn delete_document(cx: &Cx) -> Result<Json<serde_json::Value>> {
         .deleted_at(Some(jiff::Timestamp::now()))
         .exec(&mut db)
         .await
-        .map_err(topcoat::router::internal_server_error)?;
+        .map_err(topcoat::router::error::internal_server_error)?;
 
     Ok(Json(serde_json::json!({ "deleted": true })))
 }
@@ -336,13 +340,13 @@ async fn build_document_response(db: &mut Db, doc: Document) -> Result<Json<Docu
     let doc_tags = DocumentTag::filter_by_document_id(doc.id)
         .exec(db)
         .await
-        .map_err(topcoat::router::internal_server_error)?;
+        .map_err(topcoat::router::error::internal_server_error)?;
 
     let mut tag_names = Vec::new();
     for dt in doc_tags {
         let tag = Tag::get_by_id(&mut *db, &dt.tag_id)
             .await
-            .map_err(topcoat::router::internal_server_error)?;
+            .map_err(topcoat::router::error::internal_server_error)?;
         tag_names.push(tag.name);
     }
 
@@ -350,7 +354,7 @@ async fn build_document_response(db: &mut Db, doc: Document) -> Result<Json<Docu
     let metadata_rows = Metadata::filter_by_document_id(doc.id)
         .exec(db)
         .await
-        .map_err(topcoat::router::internal_server_error)?;
+        .map_err(topcoat::router::error::internal_server_error)?;
 
     let mut metadata_map = serde_json::Map::new();
     for row in metadata_rows {

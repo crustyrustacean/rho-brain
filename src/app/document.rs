@@ -6,7 +6,9 @@ use topcoat::{
     Result,
     context::{Cx, app_context},
     router::{
-        Form, SeeOther, bad_request, not_found, page, path_param, route, see_other,
+        content::Form,
+        error::{SeeOther, bad_request, not_found, see_other},
+        page, path_param, route,
     },
     view::{Unescaped, component, view},
 };
@@ -25,13 +27,13 @@ pub(crate) async fn load_tag_names(db: &mut Db, doc_id: uuid::Uuid) -> Result<Ve
     let doc_tags = DocumentTag::filter_by_document_id(doc_id)
         .exec(&mut *db)
         .await
-        .map_err(topcoat::router::internal_server_error)?;
+        .map_err(topcoat::router::error::internal_server_error)?;
 
     let mut names = Vec::new();
     for dt in doc_tags {
         let tag = Tag::get_by_id(&mut *db, &dt.tag_id)
             .await
-            .map_err(topcoat::router::internal_server_error)?;
+            .map_err(topcoat::router::error::internal_server_error)?;
         names.push(tag.name);
     }
     Ok(names)
@@ -188,7 +190,7 @@ pub async fn create_document(cx: &Cx, Form(input): Form<DocumentFormInput>) -> R
         .content(&input.content)
         .exec(&mut db)
         .await
-        .map_err(topcoat::router::internal_server_error)?;
+        .map_err(topcoat::router::error::internal_server_error)?;
 
     for tag_name in parse_tags(&input.tags) {
         let tag = get_or_create_tag(&mut db, &tag_name).await?;
@@ -197,7 +199,7 @@ pub async fn create_document(cx: &Cx, Form(input): Form<DocumentFormInput>) -> R
             .tag_id(tag.id)
             .exec(&mut db)
             .await
-            .map_err(topcoat::router::internal_server_error)?;
+            .map_err(topcoat::router::error::internal_server_error)?;
     }
 
     Ok(see_other(&format!("/documents/{}", doc.id)))
@@ -214,14 +216,14 @@ pub async fn update_document(cx: &Cx, Form(input): Form<DocumentFormInput>) -> R
         .content(&input.content)
         .exec(&mut db)
         .await
-        .map_err(topcoat::router::internal_server_error)?;
+        .map_err(topcoat::router::error::internal_server_error)?;
 
     // Replace tags
     DocumentTag::filter_by_document_id(doc.id)
         .delete()
         .exec(&mut db)
         .await
-        .map_err(topcoat::router::internal_server_error)?;
+        .map_err(topcoat::router::error::internal_server_error)?;
 
     for tag_name in parse_tags(&input.tags) {
         let tag = get_or_create_tag(&mut db, &tag_name).await?;
@@ -230,7 +232,7 @@ pub async fn update_document(cx: &Cx, Form(input): Form<DocumentFormInput>) -> R
             .tag_id(tag.id)
             .exec(&mut db)
             .await
-            .map_err(topcoat::router::internal_server_error)?;
+            .map_err(topcoat::router::error::internal_server_error)?;
     }
 
     Ok(see_other(&format!("/documents/{}", doc.id)))
@@ -246,7 +248,7 @@ pub async fn delete_document(cx: &Cx) -> Result<SeeOther> {
         .deleted_at(Some(jiff::Timestamp::now()))
         .exec(&mut db)
         .await
-        .map_err(topcoat::router::internal_server_error)?;
+        .map_err(topcoat::router::error::internal_server_error)?;
 
     Ok(see_other("/"))
 }

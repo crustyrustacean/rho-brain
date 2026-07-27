@@ -98,14 +98,14 @@ pub async fn home(cx: &Cx) -> Result {
     let all_docs = Document::all()
         .exec(&mut db)
         .await
-        .map_err(topcoat::router::internal_server_error)?;
+        .map_err(topcoat::router::error::internal_server_error)?;
     let total = all_docs.len();
     let active = all_docs.iter().filter(|d| d.deleted_at.is_none()).count();
 
     let unique_tags = Tag::all()
         .exec(&mut db)
         .await
-        .map_err(topcoat::router::internal_server_error)?
+        .map_err(topcoat::router::error::internal_server_error)?
         .len();
 
     // Documents: full-text-ish search, or the 50 most recent active docs
@@ -124,7 +124,7 @@ pub async fn home(cx: &Cx) -> Result {
         .limit(50)
         .exec(&mut db)
         .await
-        .map_err(topcoat::router::internal_server_error)?;
+        .map_err(topcoat::router::error::internal_server_error)?;
 
     let mut cards = Vec::new();
     for doc in docs {
