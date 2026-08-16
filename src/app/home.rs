@@ -9,7 +9,7 @@ use topcoat::{
 };
 
 use super::document::load_tag_names;
-use crate::models::{Document, Tag};
+use crate::models::{Document, DocumentTag, Tag};
 
 fn db(cx: &Cx) -> Db {
     app_context::<Db>(cx).clone()
@@ -20,6 +20,7 @@ fn db(cx: &Cx) -> Db {
 #[query_params(error = bad_request)]
 struct HomeQuery {
     q: Option<String>,
+    tag: Option<String>,
 }
 
 // ── Components ──────────────────────────────────────
@@ -66,20 +67,20 @@ struct DocumentCard {
 async fn document_card(card: DocumentCard) -> Result {
     let href = format!("/documents/{}", card.id);
     view! {
-        <a class="document-item" href=(href)>
-            <div class="document-title">(card.title)</div>
+        <article class="document-item">
+            <a class="document-title" href=(href)>(card.title)</a>
             <div class="document-content">(card.excerpt)</div>
             <div class="document-meta">
                 <span>"Updated: " (card.updated)</span>
             </div>
             if !card.tags.is_empty() {
-                <div>
+                <div class="tag-list">
                     for tag in card.tags {
-                        <span class="tag">(tag)</span>
+                        <a class="tag" href=(format!("/?tag={}", tag))>(tag)</a>
                     }
                 </div>
             }
-        </a>
+        </article>
     }
 }
 
@@ -89,10 +90,14 @@ async fn document_card(card: DocumentCard) -> Result {
 pub async fn home(cx: &Cx) -> Result {
     let mut db = db(cx);
 
-    let search = query_params::<HomeQuery>(cx)
-        .ok()
-        .and_then(|query| query.q.clone())
+    let params = query_params::<HomeQuery>(cx).ok();
+    let search = params
+        .as_ref()
+        .and_then(|p| p.q.clone())
         .filter(|q| !q.trim().is_empty());
+    let tag_filter = params
+        .and_then(|p| p.tag.clone())
+        .filter(|t| !t.trim().is_empty());
 
     // Stats
     let all_docs = Document::all()
@@ -108,7 +113,7 @@ pub async fn home(cx: &Cx) -> Result {
         .map_err(topcoat::router::error::internal_server_error)?
         .len();
 
-    // Documents: full-text-ish search, or the 50 most recent active docs
+    // Documents: text search and/or tag filter, or the 50 most recent active docs
     let mut query = Document::all().filter(Document::fields().deleted_at().is_none());
     if let Some(q) = &search {
         let pattern = format!("%{}%", q);
@@ -120,11 +125,35 @@ pub async fn home(cx: &Cx) -> Result {
         );
     }
 
-    let docs = query
-        .limit(50)
-        .exec(&mut db)
-        .await
-        .map_err(topcoat::router::error::internal_server_error)?;
+    // Tag filter: an unknown tag name matches no documents. (Toasty 0.9
+    // mis-lowers a `belongs_to` chain inside `any()` (`tag().name()` panics /
+    // mis-matches), so resolve the name to its id and filter the join table on
+    // the primitive `tag_id`.)
+    let unknown_tag = if let Some(tag_name) = &tag_filter {
+        match Tag::get_by_name(&mut db, tag_name).await {
+            Ok(tag) => {
+                query = query.filter(
+                    Document::fields()
+                        .document_tags()
+                        .any(DocumentTag::fields().tag_id().eq(tag.id)),
+                );
+                false
+            }
+            Err(_) => true,
+        }
+    } else {
+        false
+    };
+
+    let docs = if unknown_tag {
+        Vec::new()
+    } else {
+        query
+            .limit(50)
+            .exec(&mut db)
+            .await
+            .map_err(topcoat::router::error::internal_server_error)?
+    };
 
     let mut cards = Vec::new();
     for doc in docs {
@@ -145,6 +174,7 @@ pub async fn home(cx: &Cx) -> Result {
 
     let query_str = search.clone().unwrap_or_default();
     let searching = search.is_some();
+    let filtering = tag_filter.is_some();
     let no_results = cards.is_empty();
 
     view! {
@@ -152,11 +182,21 @@ pub async fn home(cx: &Cx) -> Result {
 
         search_bar(query: &query_str)
 
+        if searching || filtering {
+            <div class="filter-bar">
+                <span class="filter-label">"Filters:"</span>
+                if let Some(tag) = &tag_filter {
+                    <span class="tag">"#"(tag)</span>
+                }
+                if searching {
+                    <span class="tag">"\""(query_str)"\""</span>
+                }
+                <a class="btn btn-secondary btn-small" href="/">"Clear"</a>
+            </div>
+        }
+
         <div class="actions">
             <a class="btn btn-primary" href="/documents/new">"+ New Document"</a>
-            if searching {
-                <a class="btn btn-secondary" href="/">"Clear Search"</a>
-            }
         </div>
 
         <div class="document-list">
