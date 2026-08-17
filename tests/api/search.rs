@@ -67,11 +67,11 @@ async fn search_post_filters_by_tags() {
     let response = app
         .post_json(
             "/rb/search",
-            json!({"query": "e", "tags": ["cooking"]}),
+            json!({"query": "water", "tags": ["cooking"]}),
         )
         .await;
 
-    // Assert: both documents contain "e", but only one is tagged "cooking"
+    // Assert: only "Cooking pasta" matches "water" and is tagged "cooking"
     assert!(response.status.is_success());
     let body = response.json();
     let results = body["results"].as_array().unwrap();

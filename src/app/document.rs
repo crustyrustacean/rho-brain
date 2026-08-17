@@ -490,6 +490,11 @@ pub async fn create_document(cx: &Cx, Form(input): Form<DocumentFormInput>) -> R
     replace_tags(&mut db, doc.id, &parse_tags(&input.tags)).await?;
     replace_metadata(&mut db, doc.id, &entries).await?;
 
+    // Index in FTS5
+    crate::fts::index_document(&mut db, &doc.id, input.title.trim(), &input.content)
+        .await
+        .map_err(topcoat::router::error::internal_server_error)?;
+
     see_other(&format!("/documents/{}?saved=1", doc.id)).into_response(cx)
 }
 
@@ -530,6 +535,11 @@ pub async fn update_document(cx: &Cx, Form(input): Form<DocumentFormInput>) -> R
     replace_tags(&mut db, doc.id, &parse_tags(&input.tags)).await?;
     replace_metadata(&mut db, doc.id, &entries).await?;
 
+    // Sync FTS5 index
+    crate::fts::update_document_index(&mut db, &doc.id, input.title.trim(), &input.content)
+        .await
+        .map_err(topcoat::router::error::internal_server_error)?;
+
     see_other(&format!("/documents/{}?saved=1", doc.id)).into_response(cx)
 }
 
@@ -538,6 +548,11 @@ pub async fn delete_document(cx: &Cx) -> Result<SeeOther> {
     let mut db = db(cx);
     let id = document_id(cx)?;
     let mut doc = load_active_document(&mut db, &id).await?;
+
+    // Remove from FTS5 index before soft-deleting
+    crate::fts::remove_document(&mut db, &doc.id)
+        .await
+        .map_err(topcoat::router::error::internal_server_error)?;
 
     doc.update()
         .deleted_at(Some(jiff::Timestamp::now()))

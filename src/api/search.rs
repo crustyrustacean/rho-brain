@@ -76,37 +76,22 @@ async fn perform_search(cx: &Cx, input: SearchRequest) -> Result<Json<SearchResp
     let mut db = db(cx);
     let limit = input.limit.unwrap_or(20);
     let offset = input.offset.unwrap_or(0);
+    let query = input.query.trim();
 
-    // Basic LIKE-based search for now
-    // TODO: Integrate SQLite FTS5 for proper full-text search
-    let pattern = format!("%{}%", input.query);
-
-    let mut query = Document::all()
-        .filter(Document::fields().deleted_at().is_none())
-        .filter(
-            Document::fields()
-                .title()
-                .like(&pattern)
-                .or(Document::fields().content().like(&pattern)),
-        );
-
-    if let Some(tags) = input.tags {
-        if !tags.is_empty() {
-            // Filter to documents that have at least one of the specified tags.
-            //
-            // Toasty 0.9 mis-lowers a `belongs_to` chain inside `any()`
-            // (`tag().name()` panics / mis-matches), so resolve tag names to
-            // IDs first and filter the join table on the primitive `tag_id`.
-            let matching_tags = Tag::all()
+    // Resolve tag filter names to IDs if provided (workaround for toasty's
+    // `.any()` limitation — filter by primitive tag_id instead).
+    let tag_ids: Option<Vec<i64>> = if let Some(tags) = input.tags {
+        if tags.is_empty() {
+            None
+        } else {
+            let matching = Tag::all()
                 .filter(Tag::fields().name().in_list(tags))
                 .exec(&mut db)
                 .await
                 .map_err(topcoat::router::error::internal_server_error)?;
 
-            let tag_ids: Vec<i64> = matching_tags.iter().map(|tag| tag.id).collect();
-
-            if tag_ids.is_empty() {
-                // No such tags — no document can match.
+            if matching.is_empty() {
+                // No matching tags — return empty early
                 return Ok(Json(SearchResponse {
                     results: Vec::new(),
                     query: input.query,
@@ -114,48 +99,86 @@ async fn perform_search(cx: &Cx, input: SearchRequest) -> Result<Json<SearchResp
                     offset,
                 }));
             }
-
-            query = query.filter(
-                Document::fields()
-                    .document_tags()
-                    .any(DocumentTag::fields().tag_id().in_list(tag_ids)),
-            );
+            Some(matching.iter().map(|t| t.id).collect())
         }
-    }
+    } else {
+        None
+    };
 
-    let docs = query
-        .limit(limit)
-        .offset(offset)
-        .exec(&mut db)
+    // Search via FTS5 and gather doc IDs
+    let fts_results = crate::fts::search(&mut db, query, limit, offset)
         .await
         .map_err(topcoat::router::error::internal_server_error)?;
 
+    if fts_results.is_empty() {
+        return Ok(Json(SearchResponse {
+            results: Vec::new(),
+            query: input.query,
+            limit,
+            offset,
+        }));
+    }
+
+    // Filter results by tag if requested
+    let for_each = if let Some(tids) = tag_ids {
+        // Keep only FTS results whose document has at least one matching tag
+        let mut filtered = Vec::new();
+        'next: for fr in fts_results {
+            for tid in &tids {
+                let matches = DocumentTag::filter_by_document_id(fr.doc_id)
+                    .filter(DocumentTag::fields().tag_id().eq(*tid))
+                    .limit(1)
+                    .exec(&mut db)
+                    .await
+                    .map_err(topcoat::router::error::internal_server_error)?;
+                if !matches.is_empty() {
+                    filtered.push(fr);
+                    continue 'next;
+                }
+            }
+        }
+        filtered
+    } else {
+        fts_results
+    };
+
+    // For each result, fetch the document (to check deleted_at) and its tags.
     let mut results = Vec::new();
-    for doc in docs {
+    for fr in for_each {
+        // Fetch the document — skip if it's been soft-deleted since indexing
+        let doc = match Document::get_by_id(&mut db, &fr.doc_id).await {
+            Ok(d) if d.deleted_at.is_none() => d,
+            _ => continue,
+        };
+
         // Load tags for each result
-        let doc_tags = crate::models::DocumentTag::filter_by_document_id(doc.id)
+        let doc_tags = DocumentTag::filter_by_document_id(doc.id)
             .exec(&mut db)
             .await
             .map_err(topcoat::router::error::internal_server_error)?;
 
         let mut tag_names = Vec::new();
         for dt in doc_tags {
-            let tag = crate::models::Tag::get_by_id(&mut db, &dt.tag_id)
+            let tag = Tag::get_by_id(&mut db, &dt.tag_id)
                 .await
                 .map_err(topcoat::router::error::internal_server_error)?;
             tag_names.push(tag.name);
         }
 
-        // Generate excerpt from content
-        let excerpt = if doc.content.len() > 200 {
-            format!("{}...", &doc.content[..200])
+        // Use the snippet from FTS5 (or a fallback excerpt)
+        let excerpt = if fr.snippet.is_empty() {
+            if doc.content.chars().count() > 200 {
+                format!("{}...", doc.content.chars().take(200).collect::<String>())
+            } else {
+                doc.content.clone()
+            }
         } else {
-            doc.content.clone()
+            fr.snippet
         };
 
         results.push(SearchResult {
             id: doc.id.to_string(),
-            title: doc.title,
+            title: fr.title,
             excerpt,
             tags: tag_names,
         });

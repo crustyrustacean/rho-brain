@@ -24,7 +24,7 @@ pub async fn connect(url: &str) -> toasty::Result<Db> {
         None => false,
     };
 
-    let db = Db::builder()
+    let mut db = Db::builder()
         .models(toasty::models!(crate::*))
         .connect(url)
         .await?;
@@ -32,6 +32,14 @@ pub async fn connect(url: &str) -> toasty::Result<Db> {
     if is_new_db {
         db.push_schema().await?;
     }
+
+    // Always try to create the FTS5 virtual table — IF NOT EXISTS makes it
+    // a no-op on subsequent starts even for existing databases.
+    crate::fts::create_fts_table(&mut db).await?;
+
+    // Backfill the FTS index if it is empty (first run with FTS, or a
+    // database migrated from before FTS was added).
+    crate::fts::backfill_if_empty(&mut db).await?;
 
     Ok(db)
 }

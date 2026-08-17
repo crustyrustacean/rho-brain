@@ -158,6 +158,11 @@ pub async fn create_document(
         }
     }
 
+    // Index in FTS5
+    crate::fts::index_document(&mut db, &doc.id, &input.title, &input.content)
+        .await
+        .map_err(topcoat::router::error::internal_server_error)?;
+
     build_document_response(&mut db, doc).await
 }
 
@@ -235,6 +240,11 @@ pub async fn update_document(
         return Err(not_found().into());
     }
 
+    // Track the new title/content for the FTS update. We need them before
+    // the instance-level update borrows `doc` mutably.
+    let new_title = input.title.clone().unwrap_or_else(|| doc.title.clone());
+    let new_content = input.content.clone().unwrap_or_else(|| doc.content.clone());
+
     // Update fields. The instance-level `update()` borrows `doc` mutably and
     // applies the changes in place on `exec`, returning `()`.
     let mut update = doc.update();
@@ -305,6 +315,11 @@ pub async fn update_document(
         }
     }
 
+    // Sync FTS5 index with the new title/content
+    crate::fts::update_document_index(&mut db, &doc.id, &new_title, &new_content)
+        .await
+        .map_err(topcoat::router::error::internal_server_error)?;
+
     build_document_response(&mut db, doc).await
 }
 
@@ -322,6 +337,11 @@ pub async fn delete_document(cx: &Cx) -> Result<Json<serde_json::Value>> {
     if doc.deleted_at.is_some() {
         return Err(not_found().into());
     }
+
+    // Remove from FTS5 index before soft-deleting
+    crate::fts::remove_document(&mut db, &doc.id)
+        .await
+        .map_err(topcoat::router::error::internal_server_error)?;
 
     // Soft delete
     doc.update()

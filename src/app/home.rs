@@ -89,7 +89,6 @@ async fn document_card(card: DocumentCard) -> Result {
 #[page("/")]
 pub async fn home(cx: &Cx) -> Result {
     let mut db = db(cx);
-
     let params = query_params::<HomeQuery>(cx).ok();
     let search = params
         .as_ref()
@@ -113,63 +112,97 @@ pub async fn home(cx: &Cx) -> Result {
         .map_err(topcoat::router::error::internal_server_error)?
         .len();
 
-    // Documents: text search and/or tag filter, or the 50 most recent active docs
-    let mut query = Document::all().filter(Document::fields().deleted_at().is_none());
-    if let Some(q) = &search {
-        let pattern = format!("%{}%", q);
-        query = query.filter(
-            Document::fields()
-                .title()
-                .like(&pattern)
-                .or(Document::fields().content().like(&pattern)),
-        );
-    }
-
-    // Tag filter: an unknown tag name matches no documents. (Toasty 0.9
-    // mis-lowers a `belongs_to` chain inside `any()` (`tag().name()` panics /
-    // mis-matches), so resolve the name to its id and filter the join table on
-    // the primitive `tag_id`.)
-    let unknown_tag = if let Some(tag_name) = &tag_filter {
-        match Tag::get_by_name(&mut db, tag_name).await {
-            Ok(tag) => {
-                query = query.filter(
-                    Document::fields()
-                        .document_tags()
-                        .any(DocumentTag::fields().tag_id().eq(tag.id)),
-                );
-                false
-            }
-            Err(_) => true,
-        }
+    // Check whether a tag filter was given and exists. If the tag name does
+    // not exist, return the empty-state page early.
+    let has_unknown_tag = if let Some(ref tag_name) = tag_filter {
+        Tag::get_by_name(&mut db, tag_name).await.is_err()
     } else {
         false
     };
 
-    let docs = if unknown_tag {
-        Vec::new()
+    if has_unknown_tag {
+        let query_str = search.clone().unwrap_or_default();
+        return view! {
+            stats_display(total: total, unique_tags: unique_tags, active: active)
+            search_bar(query: &query_str)
+            <div class="actions">
+                <a class="btn btn-primary" href="/documents/new">"+ New Document"</a>
+            </div>
+            <div class="card empty-state">
+                <h3>"No documents found"</h3>
+                <p>"Create your first document to get started!"</p>
+            </div>
+        };
+    }
+
+    // Resolve tag name to ID for primitive filtering (workaround for toasty's
+    // `.any()` limitation).
+    let tag_id = if let Some(ref tag_name) = tag_filter {
+        Tag::get_by_name(&mut db, tag_name).await.ok().map(|t| t.id)
     } else {
-        query
+        None
+    };
+
+    // Resolve the document IDs matching the text search and/or tag filter.
+    let doc_ids: Vec<uuid::Uuid> = if let Some(q) = &search {
+        // Use FTS5 for text search (relevance-ranked)
+        let fts_results = crate::fts::search(&mut db, q, 50, 0)
+            .await
+            .map_err(topcoat::router::error::internal_server_error)?;
+        fts_results.into_iter().map(|r| r.doc_id).collect()
+    } else {
+        // No text search: get all active doc IDs
+        Document::all()
+            .filter(Document::fields().deleted_at().is_none())
             .limit(50)
             .exec(&mut db)
             .await
             .map_err(topcoat::router::error::internal_server_error)?
+            .into_iter()
+            .map(|d| d.id)
+            .collect()
     };
 
+    // Filter by tag if requested (check the join table on primitive tag_id)
+    let doc_ids: Vec<uuid::Uuid> = if let Some(tid) = tag_id {
+        let mut filtered = Vec::new();
+        for did in doc_ids {
+            let matches = DocumentTag::filter_by_document_id(did)
+                .filter(DocumentTag::fields().tag_id().eq(tid))
+                .limit(1)
+                .exec(&mut db)
+                .await
+                .map_err(topcoat::router::error::internal_server_error)?;
+            if !matches.is_empty() {
+                filtered.push(did);
+            }
+        }
+        filtered
+    } else {
+        doc_ids
+    };
+
+    // Load the full documents for the matched IDs
     let mut cards = Vec::new();
-    for doc in docs {
-        let tags = load_tag_names(&mut db, doc.id).await?;
-        let excerpt = if doc.content.chars().count() > 200 {
-            format!("{}...", doc.content.chars().take(200).collect::<String>())
-        } else {
-            doc.content.clone()
-        };
-        cards.push(DocumentCard {
-            id: doc.id.to_string(),
-            title: doc.title.clone(),
-            excerpt,
-            updated: doc.updated_at.strftime("%Y-%m-%d %H:%M").to_string(),
-            tags,
-        });
+    for id in doc_ids {
+        if let Ok(doc) = Document::get_by_id(&mut db, &id).await {
+            if doc.deleted_at.is_some() {
+                continue;
+            }
+            let tags = load_tag_names(&mut db, doc.id).await?;
+            let excerpt = if doc.content.chars().count() > 200 {
+                format!("{}...", doc.content.chars().take(200).collect::<String>())
+            } else {
+                doc.content.clone()
+            };
+            cards.push(DocumentCard {
+                id: doc.id.to_string(),
+                title: doc.title.clone(),
+                excerpt,
+                updated: doc.updated_at.strftime("%Y-%m-%d %H:%M").to_string(),
+                tags,
+            });
+        }
     }
 
     let query_str = search.clone().unwrap_or_default();
@@ -185,7 +218,7 @@ pub async fn home(cx: &Cx) -> Result {
         if searching || filtering {
             <div class="filter-bar">
                 <span class="filter-label">"Filters:"</span>
-                if let Some(tag) = &tag_filter {
+                if let Some(ref tag) = tag_filter {
                     <span class="tag">"#"(tag)</span>
                 }
                 if searching {
