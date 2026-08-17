@@ -222,7 +222,7 @@ pub async fn home(cx: &Cx) -> Result {
                     <span class="tag">"#"(tag)</span>
                 }
                 if searching {
-                    <span class="tag">"\""(query_str)"\""</span>
+                    <span class="tag">"\""(&query_str)"\""</span>
                 }
                 <a class="btn btn-secondary btn-small" href="/">"Clear"</a>
             </div>

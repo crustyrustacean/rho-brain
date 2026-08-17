@@ -6,10 +6,10 @@ use topcoat::{
     Result,
     context::{Cx, app_context},
     router::{
-        IntoResponse, Response, StatusCode,
+        StatusCode,
         content::Form,
         error::{SeeOther, bad_request, not_found, see_other},
-        page, path_param, query_params, route,
+        page, path_param, query_params, response::{IntoResponse, Response}, route,
     },
     view::{Unescaped, component, view},
 };
@@ -83,11 +83,10 @@ fn render_markdown(content: &str) -> String {
 
 // ── Path params ─────────────────────────────────────
 
-#[path_param(error = bad_request)]
-struct DocumentId(String);
+path_param!(document_id);
 
 fn document_id(cx: &Cx) -> Result<uuid::Uuid> {
-    let id_str = path_param::<DocumentId>(cx)?;
+    let id_str = path_param::<DocumentId>(cx);
     uuid::Uuid::parse_str(id_str).map_err(|_| bad_request("invalid document id").into())
 }
 

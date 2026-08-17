@@ -52,8 +52,7 @@ pub(crate) async fn get_or_create_tag(db: &mut Db, tag_name: &str) -> Result<Tag
 
 // ── Path params ─────────────────────────────────────────────────────
 
-#[path_param(error = bad_request)]
-struct DocumentId(String);
+path_param!(document_id);
 
 // ── Query params ────────────────────────────────────────────────────
 
@@ -206,9 +205,9 @@ pub async fn list_documents(cx: &Cx) -> Result<Json<DocumentListResponse>> {
 #[route(GET "/rb/documents/{document_id}")]
 pub async fn get_document(cx: &Cx) -> Result<Json<DocumentResponse>> {
     let mut db = db(cx);
-    let id_str = path_param::<DocumentId>(cx)?;
+    let id_str = path_param::<DocumentId>(cx);
 
-    let id = uuid::Uuid::parse_str(&id_str).map_err(|_| bad_request("invalid document id"))?;
+    let id = uuid::Uuid::parse_str(id_str).map_err(|_| bad_request("invalid document id"))?;
 
     let doc = Document::get_by_id(&mut db, &id)
         .await
@@ -228,9 +227,9 @@ pub async fn update_document(
     Json(input): Json<UpdateDocumentRequest>,
 ) -> Result<Json<DocumentResponse>> {
     let mut db = db(cx);
-    let id_str = path_param::<DocumentId>(cx)?;
+    let id_str = path_param::<DocumentId>(cx);
 
-    let id = uuid::Uuid::parse_str(&id_str).map_err(|_| bad_request("invalid document id"))?;
+    let id = uuid::Uuid::parse_str(id_str).map_err(|_| bad_request("invalid document id"))?;
 
     let mut doc = Document::get_by_id(&mut db, &id)
         .await
@@ -326,9 +325,9 @@ pub async fn update_document(
 #[route(DELETE "/rb/documents/{document_id}")]
 pub async fn delete_document(cx: &Cx) -> Result<Json<serde_json::Value>> {
     let mut db = db(cx);
-    let id_str = path_param::<DocumentId>(cx)?;
+    let id_str = path_param::<DocumentId>(cx);
 
-    let id = uuid::Uuid::parse_str(&id_str).map_err(|_| bad_request("invalid document id"))?;
+    let id = uuid::Uuid::parse_str(id_str).map_err(|_| bad_request("invalid document id"))?;
 
     let mut doc = Document::get_by_id(&mut db, &id)
         .await
