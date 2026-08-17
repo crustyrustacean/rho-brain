@@ -205,7 +205,7 @@ fn build_endpoint_list() -> Vec<EndpointDescription> {
         EndpointDescription {
             method: "POST".into(),
             path: "/rb/search".into(),
-            description: "Search across documents (currently substring/LIKE-based), returning results with excerpts."
+            description: "Full-text search (SQLite FTS5) across documents, returning ranked results with excerpts."
                 .into(),
             parameters: vec![
                 ParameterDescription {
