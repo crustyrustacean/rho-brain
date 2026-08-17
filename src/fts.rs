@@ -77,6 +77,21 @@ pub async fn remove_document(
     Ok(())
 }
 
+/// Decode a document id from a raw SQL value.
+///
+/// Toasty's model layer stores UUID primary keys as 16-byte SQLite blobs,
+/// so `SELECT id FROM documents` yields `Value::Bytes`. The FTS table stores
+/// ids as TEXT (bound from `Uuid::to_string`), which yields `Value::String`.
+/// Accept both so neither path silently drops rows.
+fn doc_id_from_value(v: &Value) -> Option<uuid::Uuid> {
+    match v {
+        Value::Bytes(b) => uuid::Uuid::from_slice(b).ok(),
+        Value::String(s) => uuid::Uuid::parse_str(s).ok(),
+        Value::Uuid(u) => Some(*u),
+        _ => None,
+    }
+}
+
 /// Backfill the FTS index with all existing non-deleted documents.
 ///
 /// This is called on startup for existing databases that were created before
@@ -105,13 +120,11 @@ pub async fn backfill_if_empty(db: &mut dyn Executor) -> toasty::Result<()> {
         if let Some(record) = doc.as_record() {
             let fields: Vec<&Value> = record.iter().collect();
             if fields.len() >= 3 {
-                if let (Some(id_val), Some(title), Some(content)) =
-                    (fields[0].as_str(), fields[1].as_str(), fields[2].as_str())
-                {
-                    if let Ok(doc_id) = uuid::Uuid::parse_str(id_val) {
-                        index_document(db, &doc_id, title, content).await?;
-                    }
+                if let (Some(title), Some(content)) = (fields[1].as_str(), fields[2].as_str()) {
+                if let Some(doc_id) = fields.first().and_then(|v| doc_id_from_value(v)) {
+                    index_document(db, &doc_id, title, content).await?;
                 }
+            }
             }
         }
     }

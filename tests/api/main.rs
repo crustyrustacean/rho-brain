@@ -1,5 +1,6 @@
 // tests/api
 
+mod backfill;
 mod documents;
 pub mod endpoints;
 mod health_check;

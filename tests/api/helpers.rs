@@ -15,9 +15,15 @@ pub struct TestApp {
 }
 
 pub async fn spawn_app() -> TestApp {
-    let db = rho_brain::connect("sqlite::memory:")
+    spawn_app_at("sqlite::memory:").await
+}
+
+/// Like [`spawn_app`], but against an explicit database URL — for tests that
+/// need state to survive across two `connect()` calls (e.g. FTS backfill).
+pub async fn spawn_app_at(url: &str) -> TestApp {
+    let db = rho_brain::connect(url)
         .await
-        .expect("Failed to initialize in-memory database.");
+        .expect("Failed to initialize database.");
     let router = rho_brain::router(db.clone());
 
     TestApp { router, db }
