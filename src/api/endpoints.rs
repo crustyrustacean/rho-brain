@@ -54,6 +54,9 @@ pub struct EndpointsResponse {
     pub version: String,
     /// Base URL all paths are relative to (e.g. "/rb").
     pub base: String,
+    /// Usage conventions that hold across endpoints — written for LLM agents
+    /// discovering the API through this document.
+    pub notes: Vec<String>,
     /// List of available endpoints.
     pub endpoints: Vec<EndpointDescription>,
 }
@@ -64,6 +67,15 @@ pub async fn get_endpoints() -> Result<Json<EndpointsResponse>> {
         name: "rho-brain".into(),
         version: env!("CARGO_PKG_VERSION").into(),
         base: "/rb".into(),
+        notes: vec![
+            "Document ids are UUIDs; malformed ids are rejected with 400, unknown or deleted ids with 404.".into(),
+            "Every mutating endpoint returns the full updated document, so operations can chain without a follow-up GET.".into(),
+            "PUT /rb/documents/{id} is partial for title/content (absent = unchanged) but REPLACES the whole tag list and metadata map when supplied.".into(),
+            "For micro-updates prefer the append / tags / metadata routes: they touch only what they name and never require read-modify-write.".into(),
+            "POST /rb/documents/get-or-create is the entry point for per-topic working documents: same title returns the existing document (200), otherwise creates a stub (201).".into(),
+            "content is optional everywhere (empty string when omitted) — start with a title stub and append into it.".into(),
+            "Search and content are synced through SQLite FTS5: appended text is searchable immediately.".into(),
+        ],
         endpoints: build_endpoint_list(),
     }))
 }
@@ -93,8 +105,8 @@ fn build_endpoint_list() -> Vec<EndpointDescription> {
                 ParameterDescription {
                     name: "content".into(),
                     param_type: "string".into(),
-                    required: true,
-                    description: "Document body text.".into(),
+                    required: false,
+                    description: "Document body text (optional — create a title-only stub and append later).".into(),
                 },
                 ParameterDescription {
                     name: "tags".into(),
@@ -200,6 +212,113 @@ fn build_endpoint_list() -> Vec<EndpointDescription> {
                 description: "The document UUID.".into(),
             }],
             example_body: None,
+        },
+        EndpointDescription {
+            method: "POST".into(),
+            path: "/rb/documents/{id}/append".into(),
+            description: "Micro-update: append text to a document's content without read-modify-write. Joins with a blank line by default; sets content directly on an empty document. Returns the full updated document."
+                .into(),
+            parameters: vec![
+                ParameterDescription {
+                    name: "id".into(),
+                    param_type: "path (UUID)".into(),
+                    required: true,
+                    description: "The document UUID.".into(),
+                },
+                ParameterDescription {
+                    name: "content".into(),
+                    param_type: "string".into(),
+                    required: true,
+                    description: "Text to append.".into(),
+                },
+                ParameterDescription {
+                    name: "separator".into(),
+                    param_type: "string".into(),
+                    required: false,
+                    description: "Joiner between existing and appended text (default: blank line).".into(),
+                },
+            ],
+            example_body: Some(serde_json::json!({
+                "content": "Follow-up: measurements are in."
+            })),
+        },
+        EndpointDescription {
+            method: "POST".into(),
+            path: "/rb/documents/{id}/tags".into(),
+            description: "Micro-update: add tags (set union). Duplicates are no-ops; existing tags are untouched. Removing tags is a full-list PUT. Returns the full updated document."
+                .into(),
+            parameters: vec![
+                ParameterDescription {
+                    name: "id".into(),
+                    param_type: "path (UUID)".into(),
+                    required: true,
+                    description: "The document UUID.".into(),
+                },
+                ParameterDescription {
+                    name: "tags".into(),
+                    param_type: "array<string>".into(),
+                    required: true,
+                    description: "Tag names to add.".into(),
+                },
+            ],
+            example_body: Some(serde_json::json!({
+                "tags": ["follow-up", "measurements"]
+            })),
+        },
+        EndpointDescription {
+            method: "POST".into(),
+            path: "/rb/documents/{id}/metadata".into(),
+            description: "Micro-update: merge metadata keys. Listed keys are set (typed like create: booleans and integers preserved), null deletes a key, unlisted keys are left alone. Returns the full updated document."
+                .into(),
+            parameters: vec![
+                ParameterDescription {
+                    name: "id".into(),
+                    param_type: "path (UUID)".into(),
+                    required: true,
+                    description: "The document UUID.".into(),
+                },
+                ParameterDescription {
+                    name: "(body)".into(),
+                    param_type: "object".into(),
+                    required: true,
+                    description: "Keys to set or delete (value null deletes).".into(),
+                },
+            ],
+            example_body: Some(serde_json::json!({
+                "priority": "high",
+                "pinned": true,
+                "stale-key": null
+            })),
+        },
+        EndpointDescription {
+            method: "POST".into(),
+            path: "/rb/documents/get-or-create".into(),
+            description: "Find the active document with this exact title or create it. 200 returns the existing document unchanged; 201 creates a stub (empty content unless supplied) with optional tags. The idempotent entry point for per-topic working documents."
+                .into(),
+            parameters: vec![
+                ParameterDescription {
+                    name: "title".into(),
+                    param_type: "string".into(),
+                    required: true,
+                    description: "Exact title to match or create under.".into(),
+                },
+                ParameterDescription {
+                    name: "content".into(),
+                    param_type: "string".into(),
+                    required: false,
+                    description: "Initial content (create path only; ignored when the document exists).".into(),
+                },
+                ParameterDescription {
+                    name: "tags".into(),
+                    param_type: "array<string>".into(),
+                    required: false,
+                    description: "Initial tags (create path only; ignored when the document exists).".into(),
+                },
+            ],
+            example_body: Some(serde_json::json!({
+                "title": "Daily Journal",
+                "tags": ["journal"]
+            })),
         },
         // ---- Search ----
         EndpointDescription {

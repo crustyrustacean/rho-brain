@@ -19,22 +19,33 @@ Successor to [pi-brain](https://landruser8.tail2839f9.ts.net), reimagined with a
 - Full-text search
 - Pagination support
 - JSON API compatible with pi-brain
+- Web editor with live markdown preview and draft autosave
+- LLM-friendly micro-update API (append, tag-add, metadata-merge, get-or-create)
 
 ## API Endpoints
 
-Base path: `/rb`
+Base path: `/rb`. `GET /rb/endpoints` returns this list as a machine-readable
+discovery document with example bodies and usage notes — the entry point for
+LLM agents.
 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/rb/health_check` | Health check |
-| POST | `/rb/documents` | Create document |
+| POST | `/rb/documents` | Create document (content optional — title-only stubs welcome) |
 | GET | `/rb/documents` | List documents (paginated) |
 | GET | `/rb/documents/{id}` | Get single document |
-| PUT | `/rb/documents/{id}` | Update document |
+| PUT | `/rb/documents/{id}` | Update document (partial for title/content; tags/metadata replace when supplied) |
 | DELETE | `/rb/documents/{id}` | Soft-delete document |
+| POST | `/rb/documents/{id}/append` | **Micro-update:** append content, no read-modify-write |
+| POST | `/rb/documents/{id}/tags` | **Micro-update:** add tags (set union, duplicates are no-ops) |
+| POST | `/rb/documents/{id}/metadata` | **Micro-update:** merge metadata keys (`null` deletes, unlisted keys preserved) |
+| POST | `/rb/documents/get-or-create` | **Micro-update:** find by exact title or create a stub (200 vs 201) |
 | POST | `/rb/search` | Full-text search |
 | GET | `/rb/search` | Search via query params |
 | GET | `/rb/stats` | Knowledge base statistics |
+
+Every mutating endpoint returns the full updated document, so operations
+chain without a follow-up GET.
 
 ## Database Schema
 

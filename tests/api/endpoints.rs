@@ -16,6 +16,16 @@ async fn endpoints_returns_discovery_document() {
     assert_eq!(body["base"], "/rb");
     assert!(body["version"].is_string());
 
+    // Conventions for LLM agents discovering the API through this document
+    let notes = body["notes"].as_array().expect("notes should be an array");
+    assert!(!notes.is_empty(), "discovery doc should carry usage notes");
+    assert!(
+        notes
+            .iter()
+            .any(|n| n.as_str().unwrap_or("").contains("micro-updates")),
+        "notes: {notes:?}"
+    );
+
     let endpoints = body["endpoints"]
         .as_array()
         .expect("endpoints should be an array");
@@ -56,6 +66,10 @@ async fn advertised_list_matches_known_surface() {
         ("GET", "/rb/documents/{id}"),
         ("PUT", "/rb/documents/{id}"),
         ("DELETE", "/rb/documents/{id}"),
+        ("POST", "/rb/documents/{id}/append"),
+        ("POST", "/rb/documents/{id}/tags"),
+        ("POST", "/rb/documents/{id}/metadata"),
+        ("POST", "/rb/documents/get-or-create"),
         ("POST", "/rb/search"),
         ("GET", "/rb/search"),
         ("GET", "/rb/stats"),
