@@ -242,18 +242,18 @@ async fn document_form(
                     <label for="title">"Title"</label>
                     <input type="text" id="title" name="title" value=(state.title.clone()) required=(true)>
                 </div>
-                <div class="editor" data-signals-mode="'split'">
+                <div class="editor" data-signals:mode="'split'">
                     <div class="editor-toolbar" role="toolbar" aria-label="Editor view mode">
-                        <button type="button" class="mode-btn active" data-attr-class="mode === 'write' ? 'mode-btn active' : 'mode-btn'" data-on:click="@set(mode='write')">"Write"</button>
-                        <button type="button" class="mode-btn" data-attr-class="mode === 'split' ? 'mode-btn active' : 'mode-btn'" data-on:click="@set(mode='split')">"Split"</button>
-                        <button type="button" class="mode-btn" data-attr-class="mode === 'preview' ? 'mode-btn active' : 'mode-btn'" data-on:click="@set(mode='preview')">"Preview"</button>
+                        <button type="button" class="mode-btn" data-class:active="$mode === 'write'" data-on:click="$mode = 'write'">"Write"</button>
+                        <button type="button" class="mode-btn active" data-class:active="$mode === 'split'" data-on:click="$mode = 'split'">"Split"</button>
+                        <button type="button" class="mode-btn" data-class:active="$mode === 'preview'" data-on:click="$mode = 'preview'">"Preview"</button>
                     </div>
-                    <div class="editor-panes" data-attr-class="mode === 'split' ? 'editor-panes split' : 'editor-panes'">
-                        <div class="editor-pane editor-write-pane" data-show="mode !== 'preview'">
-                            <textarea id="content" name="content" class="editor-textarea" placeholder="Write markdown here — the preview updates as you type. Leave empty to save a title-only draft." data-bind-content="" data-on:input="@post('/documents/preview', debounce: 400)">(state.content.clone())</textarea>
+                    <div class="editor-panes split" data-class:split="$mode === 'split'">
+                        <div class="editor-pane editor-write-pane" data-show="$mode !== 'preview'">
+                            <textarea id="content" name="content" class="editor-textarea" placeholder="Write markdown here — the preview updates as you type. Leave empty to save a title-only draft." data-bind="content" data-on:input__debounce.400ms="@post('/documents/preview')">(state.content.clone())</textarea>
                             <p class="form-hint">"Markdown is rendered on the document page."</p>
                         </div>
-                        <div class="editor-pane editor-preview-pane" data-show="mode !== 'write'">
+                        <div class="editor-pane editor-preview-pane" data-show="$mode !== 'write'">
                             <div id="preview" class="markdown-content">(Unescaped::new_unchecked(initial_preview))</div>
                         </div>
                     </div>

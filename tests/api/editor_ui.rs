@@ -79,27 +79,44 @@ async fn new_document_page_has_editor_structure() {
     // Act
     let html = app.get("/documents/new").await.text();
 
-    // Assert: mode signal, split default, toggle actions
+    // Assert: mode signal (v1.0 colon syntax), split default, assignment
+    // expressions on the toggle buttons (v1.0 has no @set action — signals
+    // are assigned directly)
     assert!(
-        html.contains(r#"data-signals-mode="'split'""#),
+        html.contains(r#"data-signals:mode="'split'""#),
         "mode signal missing:\n{html}"
     );
     for mode in ["write", "split", "preview"] {
         assert!(
-            html.contains(&format!("@set(mode='{mode}')")),
+            html.contains(&format!("$mode = '{mode}'")),
             "{mode} toggle missing:\n{html}"
+        );
+        assert!(
+            html.contains(&format!("data-class:active=\"$mode === '{mode}'\"")),
+            "{mode} active-state class binding missing:\n{html}"
         );
     }
 
-    // Panes: write pane hidden in preview mode, preview pane hidden in write mode
-    assert!(html.contains(r#"data-show="mode !== 'preview'""#), "{html}");
-    assert!(html.contains(r#"data-show="mode !== 'write'""#), "{html}");
-
-    // The textarea binds the content signal and refreshes the preview
-    assert!(html.contains("data-bind-content"), "{html}");
+    // Panes: write pane hidden in preview mode, preview pane hidden in write
+    // mode; signals are referenced with the $ prefix
     assert!(
-        html.contains("@post('/documents/preview'"),
-        "preview action missing:\n{html}"
+        html.contains(r#"data-show="$mode !== 'preview'""#),
+        "{html}"
+    );
+    assert!(html.contains(r#"data-show="$mode !== 'write'""#), "{html}");
+
+    // The split layout class is signal-driven too
+    assert!(
+        html.contains(r#"data-class:split="$mode === 'split'""#),
+        "{html}"
+    );
+
+    // The textarea binds the content signal (value form) and refreshes the
+    // preview with a debounced modifier — not an action argument
+    assert!(html.contains(r#"data-bind="content""#), "{html}");
+    assert!(
+        html.contains(r#"data-on:input__debounce.400ms="@post('/documents/preview')""#),
+        "{html}"
     );
 
     // A server-rendered preview element exists from the start
