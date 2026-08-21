@@ -59,13 +59,18 @@ async fn preview_handles_missing_and_empty_content() {
     let app = spawn_app().await;
 
     // Act / Assert: no content signal at all
-    let response = app.post_json("/documents/preview", serde_json::json!({})).await;
+    let response = app
+        .post_json("/documents/preview", serde_json::json!({}))
+        .await;
     assert_eq!(response.status, 200);
     assert!(response.text().contains(r#"id="preview""#));
 
     // Act / Assert: whitespace-only content
     let response = app
-        .post_json("/documents/preview", serde_json::json!({"content": "   \n"}))
+        .post_json(
+            "/documents/preview",
+            serde_json::json!({"content": "   \n"}),
+        )
         .await;
     assert_eq!(response.status, 200);
     assert!(response.text().contains(r#"id="preview""#));

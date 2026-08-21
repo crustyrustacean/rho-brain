@@ -218,36 +218,58 @@ async fn document_form(
     state: &DocumentFormState,
     all_tags: &[String],
 ) -> Result {
+    // The preview pane starts populated so the split view is correct before
+    // any Datastar round-trip.
+    let initial_preview = if state.content.trim().is_empty() {
+        String::new()
+    } else {
+        render_markdown(&state.content)
+    };
+
     view! {
         if state.error.is_some() {
             <div class="error" role="alert">(state.error.as_deref().unwrap_or_default())</div>
         }
-        <div class="card">
+        <div class="card editor-card">
             <form method="post" action=(action)>
                 <div class="form-group">
                     <label for="title">"Title"</label>
                     <input type="text" id="title" name="title" value=(state.title.clone()) required=(true)>
                 </div>
-                <div class="form-group">
-                    <label for="content">"Content"</label>
-                    <textarea id="content" name="content" required=(true)>(state.content.clone())</textarea>
-                    <p class="form-hint">"Markdown is rendered on the document page."</p>
+                <div class="editor" data-signals-mode="'split'">
+                    <div class="editor-toolbar" role="toolbar" aria-label="Editor view mode">
+                        <button type="button" class="mode-btn active" data-attr-class="mode === 'write' ? 'mode-btn active' : 'mode-btn'" data-on:click="@set(mode='write')">"Write"</button>
+                        <button type="button" class="mode-btn" data-attr-class="mode === 'split' ? 'mode-btn active' : 'mode-btn'" data-on:click="@set(mode='split')">"Split"</button>
+                        <button type="button" class="mode-btn" data-attr-class="mode === 'preview' ? 'mode-btn active' : 'mode-btn'" data-on:click="@set(mode='preview')">"Preview"</button>
+                    </div>
+                    <div class="editor-panes" data-attr-class="mode === 'split' ? 'editor-panes split' : 'editor-panes'">
+                        <div class="editor-pane editor-write-pane" data-show="mode !== 'preview'">
+                            <textarea id="content" name="content" class="editor-textarea" placeholder="Write markdown here — the preview updates as you type" required=(true) data-bind-content="" data-on:input="@post('/documents/preview', debounce: 400)">(state.content.clone())</textarea>
+                            <p class="form-hint">"Markdown is rendered on the document page."</p>
+                        </div>
+                        <div class="editor-pane editor-preview-pane" data-show="mode !== 'write'">
+                            <div id="preview" class="markdown-content">(Unescaped::new_unchecked(initial_preview))</div>
+                        </div>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label for="tags">"Tags (comma separated)"</label>
-                    <input type="text" id="tags" name="tags" value=(state.tags.clone()) list="tag-suggestions" placeholder="tag1, tag2, tag3">
-                    <datalist id="tag-suggestions">
-                        for tag in all_tags {
-                            <option value=(tag)></option>
-                        }
-                    </datalist>
-                </div>
-                <div class="form-group">
-                    <label for="metadata">"Metadata (one key=value per line)"</label>
-                    <textarea id="metadata" name="metadata" class="metadata-input" placeholder="priority=high&#10;version=2&#10;pinned=true">(state.metadata.clone())</textarea>
-                    <p class="form-hint">"Values are typed automatically: true/false become booleans, integers become numbers, everything else is text."</p>
-                </div>
-                <div class="form-actions">
+                <details class="editor-extras">
+                    <summary>"Tags &amp; metadata"</summary>
+                    <div class="form-group">
+                        <label for="tags">"Tags (comma separated)"</label>
+                        <input type="text" id="tags" name="tags" value=(state.tags.clone()) list="tag-suggestions" placeholder="tag1, tag2, tag3">
+                        <datalist id="tag-suggestions">
+                            for tag in all_tags {
+                                <option value=(tag)></option>
+                            }
+                        </datalist>
+                    </div>
+                    <div class="form-group">
+                        <label for="metadata">"Metadata (one key=value per line)"</label>
+                        <textarea id="metadata" name="metadata" class="metadata-input" placeholder="priority=high&#10;version=2&#10;pinned=true">(state.metadata.clone())</textarea>
+                        <p class="form-hint">"Values are typed automatically: true/false become booleans, integers become numbers, everything else is text."</p>
+                    </div>
+                </details>
+                <div class="form-actions editor-actions">
                     <a class="btn btn-secondary" href=(cancel_href)>"Cancel"</a>
                     <button type="submit" class="btn btn-primary">(submit_label)</button>
                 </div>

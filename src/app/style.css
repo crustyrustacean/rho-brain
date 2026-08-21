@@ -280,6 +280,116 @@ a.tag:hover {
     margin-top: 1rem;
 }
 
+/* ── Editor ───────────────────────────────────── */
+
+.editor-toolbar {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.mode-btn {
+    padding: 0.35rem 0.9rem;
+    border: 1px solid #ddd;
+    border-bottom: none;
+    border-radius: 4px 4px 0 0;
+    background: #fafafa;
+    color: #666;
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+
+.mode-btn.active {
+    background: #2c3e50;
+    border-color: #2c3e50;
+    color: white;
+}
+
+.editor-panes {
+    display: grid;
+    border: 1px solid #ddd;
+    border-radius: 0 4px 4px 4px;
+    padding: 0.75rem;
+    background: #fafafa;
+}
+
+.editor-panes.split {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 1rem;
+}
+
+.editor-pane {
+    min-width: 0;
+}
+
+.editor-textarea {
+    width: 100%;
+    min-height: 320px;
+    resize: vertical;
+    padding: 0.75rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    /* 16px minimum: iOS Safari refuses to zoom on focus only at >= 16px,
+       and zooming on every tap is miserable on a phone. */
+    font-size: 16px;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    line-height: 1.5;
+}
+
+.editor-preview-pane {
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+.editor-preview-pane .markdown-content {
+    background: white;
+    border: 1px solid #eee;
+    border-radius: 4px;
+    padding: 0.75rem;
+    min-height: 320px;
+}
+
+.editor-extras {
+    border: 1px solid #eee;
+    border-radius: 4px;
+    padding: 0.5rem 0.75rem;
+    margin: 1rem 0;
+    background: #fafafa;
+}
+
+.editor-extras summary {
+    cursor: pointer;
+    font-weight: 500;
+    color: #666;
+    font-size: 0.9rem;
+}
+
+.editor-extras[open] summary {
+    margin-bottom: 0.75rem;
+}
+
+.editor-actions {
+    position: sticky;
+    bottom: 0;
+    margin: 0 -1rem -1rem;
+    padding: 0.75rem 1rem;
+    background: white;
+    border-top: 1px solid #eee;
+    border-radius: 0 0 8px 8px;
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.06);
+}
+
+/* On phones, Split collapses to the editor alone: the panes would otherwise
+   stack into a very long column with the preview far off-screen. */
+@media (max-width: 800px) {
+    .editor-panes.split {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .editor-panes.split .editor-preview-pane {
+        display: none;
+    }
+}
+
 .form-hint {
     color: #999;
     font-size: 0.8rem;

@@ -3,7 +3,8 @@
 mod assets;
 mod backfill;
 mod documents;
-pub mod endpoints;
+pub mod editor_ui;
+mod endpoints;
 mod health_check;
 mod helpers;
 mod pages;
