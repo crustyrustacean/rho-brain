@@ -6,9 +6,12 @@ use topcoat::{
     Result,
     context::{Cx, app_context},
     router::{
+        StatusCode,
         content::Json,
         error::{bad_request, not_found},
-        path_param, query_params, route,
+        path_param, query_params,
+        response::{IntoResponse, Response},
+        route,
     },
 };
 
@@ -68,7 +71,8 @@ pub struct ListQuery {
 #[derive(Debug, Deserialize)]
 pub struct CreateDocumentRequest {
     pub title: String,
-    pub content: String,
+    /// Optional so agents can create a title-only stub and append later.
+    pub content: Option<String>,
     pub tags: Option<Vec<String>>,
     pub metadata: Option<serde_json::Value>,
 }
@@ -111,7 +115,7 @@ pub async fn create_document(
 
     let doc = Document::create()
         .title(&input.title)
-        .content(&input.content)
+        .content(input.content.as_deref().unwrap_or(""))
         .exec(&mut db)
         .await
         .map_err(topcoat::router::error::internal_server_error)?;
@@ -156,9 +160,14 @@ pub async fn create_document(
     }
 
     // Index in FTS5
-    crate::fts::index_document(&mut db, &doc.id, &input.title, &input.content)
-        .await
-        .map_err(topcoat::router::error::internal_server_error)?;
+    crate::fts::index_document(
+        &mut db,
+        &doc.id,
+        &input.title,
+        input.content.as_deref().unwrap_or(""),
+    )
+    .await
+    .map_err(topcoat::router::error::internal_server_error)?;
 
     build_document_response(&mut db, doc).await
 }
@@ -318,6 +327,236 @@ pub async fn update_document(
         .map_err(topcoat::router::error::internal_server_error)?;
 
     build_document_response(&mut db, doc).await
+}
+
+// ── Micro-update routes ────────────────────────────────────────────
+//
+// Small, single-purpose mutations for LLM agents: each touches only what it
+// names, keeps the FTS index in sync, and returns the full updated document
+// so operations chain without a follow-up GET.
+
+/// Load a document by id, mapping missing and soft-deleted to 404.
+async fn active_document(db: &mut Db, id: &uuid::Uuid) -> Result<Document> {
+    let doc = Document::get_by_id(&mut *db, id)
+        .await
+        .map_err(db_error_or_not_found)?;
+
+    if doc.deleted_at.is_some() {
+        return Err(not_found().into());
+    }
+    Ok(doc)
+}
+
+/// Write one typed metadata row, applying the same type inference as
+/// create/update: string → text, integer → int, bool → bool, else text.
+async fn insert_metadata_row(
+    db: &mut Db,
+    doc_id: uuid::Uuid,
+    key: &str,
+    value: serde_json::Value,
+) -> Result<()> {
+    let builder = Metadata::create().document_id(doc_id).key(key);
+    let builder = match value {
+        serde_json::Value::String(s) => builder.value_text(s),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                builder.value_int(i)
+            } else {
+                builder.value_text(n.to_string())
+            }
+        }
+        serde_json::Value::Bool(b) => builder.value_bool(b),
+        other => builder.value_text(other.to_string()),
+    };
+    builder
+        .exec(db)
+        .await
+        .map_err(topcoat::router::error::internal_server_error)?;
+    Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AppendRequest {
+    pub content: String,
+    /// Joiner between the existing and appended text (default: blank line).
+    pub separator: Option<String>,
+}
+
+/// Append text to a document's content without read-modify-write.
+///
+/// Appending to an empty (stub) document sets the content directly with no
+/// separator.
+#[route(POST "/rb/documents/{document_id}/append")]
+pub async fn append_document(
+    cx: &Cx,
+    Json(input): Json<AppendRequest>,
+) -> Result<Json<DocumentResponse>> {
+    let mut db = db(cx);
+    let id_str = path_param::<DocumentId>(cx);
+    let id = uuid::Uuid::parse_str(id_str).map_err(|_| bad_request("invalid document id"))?;
+
+    let mut doc = active_document(&mut db, &id).await?;
+
+    let separator = input.separator.unwrap_or_else(|| "\n\n".to_string());
+    let new_content = if doc.content.is_empty() {
+        input.content
+    } else {
+        format!("{}{}{}", doc.content, separator, input.content)
+    };
+
+    doc.update()
+        .content(&new_content)
+        .exec(&mut db)
+        .await
+        .map_err(topcoat::router::error::internal_server_error)?;
+
+    crate::fts::update_document_index(&mut db, &doc.id, &doc.title, &new_content)
+        .await
+        .map_err(topcoat::router::error::internal_server_error)?;
+
+    build_document_response(&mut db, doc).await
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AddTagsRequest {
+    pub tags: Vec<String>,
+}
+
+/// Add tags to a document without resending the whole tag set: the union of
+/// the request's tags and the document's existing tags. Duplicates (in the
+/// request or already attached) are no-ops. Removing tags stays a full-list
+/// `PUT`.
+#[route(POST "/rb/documents/{document_id}/tags")]
+pub async fn add_tags(
+    cx: &Cx,
+    Json(input): Json<AddTagsRequest>,
+) -> Result<Json<DocumentResponse>> {
+    let mut db = db(cx);
+    let id_str = path_param::<DocumentId>(cx);
+    let id = uuid::Uuid::parse_str(id_str).map_err(|_| bad_request("invalid document id"))?;
+
+    let doc = active_document(&mut db, &id).await?;
+
+    let mut seen = std::collections::HashSet::new();
+    for raw in &input.tags {
+        let name = raw.trim();
+        if name.is_empty() || !seen.insert(name.to_string()) {
+            continue;
+        }
+        let tag = get_or_create_tag(&mut db, name).await?;
+        let already = DocumentTag::filter_by_document_id(doc.id)
+            .filter(DocumentTag::fields().tag_id().eq(tag.id))
+            .limit(1)
+            .exec(&mut db)
+            .await
+            .map_err(topcoat::router::error::internal_server_error)?;
+        if already.is_empty() {
+            DocumentTag::create()
+                .document_id(doc.id)
+                .tag_id(tag.id)
+                .exec(&mut db)
+                .await
+                .map_err(topcoat::router::error::internal_server_error)?;
+        }
+    }
+
+    build_document_response(&mut db, doc).await
+}
+
+/// Merge metadata keys: listed keys are set (typed like create), `null`
+/// deletes the key, and unlisted keys are untouched. Unlike the full `PUT`,
+/// which replaces the entire metadata set.
+#[route(POST "/rb/documents/{document_id}/metadata")]
+pub async fn merge_metadata(
+    cx: &Cx,
+    Json(input): Json<serde_json::Map<String, serde_json::Value>>,
+) -> Result<Json<DocumentResponse>> {
+    let mut db = db(cx);
+    let id_str = path_param::<DocumentId>(cx);
+    let id = uuid::Uuid::parse_str(id_str).map_err(|_| bad_request("invalid document id"))?;
+
+    let doc = active_document(&mut db, &id).await?;
+
+    for (key, value) in input {
+        // Replace any existing row for this key, then insert unless deleting.
+        Metadata::filter_by_document_id(doc.id)
+            .filter(Metadata::fields().key().eq(&key))
+            .delete()
+            .exec(&mut db)
+            .await
+            .map_err(topcoat::router::error::internal_server_error)?;
+
+        if !value.is_null() {
+            insert_metadata_row(&mut db, doc.id, &key, value).await?;
+        }
+    }
+
+    build_document_response(&mut db, doc).await
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GetOrCreateRequest {
+    pub title: String,
+    /// Used only when creating; ignored when the title already exists.
+    pub content: Option<String>,
+    /// Used only when creating; ignored when the title already exists.
+    pub tags: Option<Vec<String>>,
+}
+
+/// Find the active document with this exact title, or create it.
+///
+/// Collapses the search-then-create dance agents otherwise need for
+/// per-topic working documents ("Daily Journal", "Scratch notes", ...).
+/// Returns `200` with the existing document, or `201` with the new one
+/// (content defaults to empty — append to fill it in).
+#[route(POST "/rb/documents/get-or-create")]
+pub async fn get_or_create_document(
+    cx: &Cx,
+    Json(input): Json<GetOrCreateRequest>,
+) -> Result<Response> {
+    let mut db = db(cx);
+
+    let title = input.title.trim();
+    if title.is_empty() {
+        return Err(bad_request("title is required").into());
+    }
+
+    let existing = Document::filter(Document::fields().title().eq(title))
+        .filter(Document::fields().deleted_at().is_none())
+        .limit(1)
+        .exec(&mut db)
+        .await
+        .map_err(topcoat::router::error::internal_server_error)?;
+
+    if let Some(doc) = existing.into_iter().next() {
+        let Json(resp) = build_document_response(&mut db, doc).await?;
+        return Json(resp).into_response(cx);
+    }
+
+    let content = input.content.as_deref().unwrap_or("");
+    let doc = Document::create()
+        .title(title)
+        .content(content)
+        .exec(&mut db)
+        .await
+        .map_err(topcoat::router::error::internal_server_error)?;
+
+    for tag_name in input.tags.unwrap_or_default() {
+        let tag = get_or_create_tag(&mut db, &tag_name).await?;
+        DocumentTag::create()
+            .document_id(doc.id)
+            .tag_id(tag.id)
+            .exec(&mut db)
+            .await
+            .map_err(topcoat::router::error::internal_server_error)?;
+    }
+
+    crate::fts::index_document(&mut db, &doc.id, title, content)
+        .await
+        .map_err(topcoat::router::error::internal_server_error)?;
+
+    let Json(resp) = build_document_response(&mut db, doc).await?;
+    (StatusCode::CREATED, Json(resp)).into_response(cx)
 }
 
 #[route(DELETE "/rb/documents/{document_id}")]
