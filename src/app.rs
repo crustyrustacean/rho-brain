@@ -6,9 +6,10 @@ use topcoat::{
     view::{Unescaped, view},
 };
 
-mod api;
 mod document;
+mod editor;
 mod home;
+mod markdown;
 
 const CSS: &str = include_str!("app/style.css");
 
