@@ -1,5 +1,6 @@
 // tests/api
 
+mod assets;
 mod backfill;
 mod documents;
 pub mod endpoints;

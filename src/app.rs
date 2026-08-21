@@ -6,6 +6,7 @@ use topcoat::{
     view::{Unescaped, view},
 };
 
+mod assets;
 mod document;
 mod editor;
 mod home;
