@@ -4286,6 +4286,7 @@ dependencies = [
  "topcoat-cookie",
  "topcoat-core",
  "topcoat-core-macro",
+ "topcoat-datastar",
  "topcoat-font",
  "topcoat-font-macro",
  "topcoat-icon",
@@ -4370,6 +4371,21 @@ dependencies = [
  "quote",
  "syn 2.0.119",
  "topcoat-core-grammar",
+]
+
+[[package]]
+name = "topcoat-datastar"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "01412b52d4076688cce51ca4fbe3e81f04427be1e0ac1e3d1fde705f86e4c982"
+dependencies = [
+ "futures-util",
+ "http",
+ "memchr",
+ "serde",
+ "serde_json",
+ "topcoat-core",
+ "topcoat-router",
 ]
 
 [[package]]

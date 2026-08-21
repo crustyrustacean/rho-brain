@@ -7,5 +7,6 @@ pub mod endpoints;
 mod health_check;
 mod helpers;
 mod pages;
+mod preview;
 mod search;
 mod stats;

@@ -9,6 +9,7 @@ use toasty::Db;
 use topcoat::{
     Result,
     context::{Cx, app_context},
+    datastar::{PatchElements, Signals},
     router::{
         StatusCode,
         content::Form,
@@ -17,13 +18,14 @@ use topcoat::{
         response::{IntoResponse, Response},
         route,
     },
-    view::{component, view},
+    view::{Unescaped, component, view},
 };
 
 use crate::api::documents::get_or_create_tag;
 use crate::models::{Document, DocumentTag, Metadata, Tag};
 
 use super::document::{load_active_document, load_metadata_pairs, load_tag_names};
+use super::markdown::render_markdown;
 
 fn db(cx: &Cx) -> Db {
     app_context::<Db>(cx).clone()
@@ -324,6 +326,38 @@ pub async fn edit_document(cx: &Cx) -> Result {
         &all_tags,
     )
     .await
+}
+
+// ── Live preview ───────────────────────────────────
+
+/// The signals the editor page keeps. The preview action sends the whole
+/// store; only `content` matters here and every other signal is ignored.
+#[derive(Debug, Deserialize)]
+struct PreviewSignals {
+    content: Option<String>,
+}
+
+/// Render the editor's `content` signal and return it as a patch of the
+/// `#preview` element.
+///
+/// Uses the same renderer as the document view page, so what the preview
+/// shows is exactly what the saved page will render.
+#[route(POST "/documents/preview")]
+pub async fn preview_document(
+    cx: &Cx,
+    Signals(input): Signals<PreviewSignals>,
+) -> Result<PatchElements> {
+    let content = input.content.as_deref().unwrap_or("");
+    let rendered = if content.trim().is_empty() {
+        String::new()
+    } else {
+        render_markdown(content)
+    };
+
+    let fragment = view! { cx =>
+        <div id="preview" class="markdown-content">(Unescaped::new_unchecked(rendered))</div>
+    }?;
+    Ok(PatchElements::new(fragment.render(cx)))
 }
 
 // ── Form handlers (POST → redirect → GET) ───────────
