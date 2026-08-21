@@ -146,6 +146,50 @@ async fn form_metadata_round_trips() {
 }
 
 #[tokio::test]
+async fn form_allows_title_only_drafts() {
+    // Arrange: the phone workflow — start a stub with just a title, flesh it
+    // out later at the desk.
+    let app = spawn_app().await;
+
+    // Act: create without any content
+    let response = app.post_form("/documents", "title=Blog+post+idea").await;
+
+    // Assert: it saves, redirects, and renders
+    assert_eq!(response.status, 303);
+    let location = response
+        .headers
+        .get("location")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+    let doc_path = location.split('?').next().unwrap().to_string();
+    let page = app.get(&doc_path).await;
+    assert!(page.status.is_success());
+    assert!(page.text().contains("Blog post idea"));
+
+    // The stub is searchable and counted like any other document
+    let home = app.get("/").await.text();
+    assert!(home.contains("Blog post idea"));
+    let stats = app.get("/rb/stats").await.json();
+    assert_eq!(stats["document_count"], 1);
+
+    // Editing keeps working, including staying empty
+    let response = app
+        .post_form(&format!("{doc_path}/edit"), "title=Still+an+idea")
+        .await;
+    assert_eq!(response.status, 303);
+
+    // And content can be cleared back to empty on edit
+    let response = app
+        .post_form(&format!("{doc_path}/edit"), "title=Back+to+stub&content=")
+        .await;
+    assert_eq!(response.status, 303);
+    let api = app.get(&format!("/rb{doc_path}")).await.json();
+    assert_eq!(api["content"], "");
+}
+
+#[tokio::test]
 async fn form_validation_rejects_empty_title_with_preserved_input() {
     // Arrange
     let app = spawn_app().await;

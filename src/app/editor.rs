@@ -45,9 +45,17 @@ fn document_id(cx: &Cx) -> Result<uuid::Uuid> {
 #[derive(Debug, Deserialize)]
 pub struct DocumentFormInput {
     title: String,
-    content: String,
+    /// Optional so a title-only draft can be started (e.g. from a phone)
+    /// and filled in later; missing and empty are the same thing.
+    content: Option<String>,
     tags: Option<String>,
     metadata: Option<String>,
+}
+
+impl DocumentFormInput {
+    fn content(&self) -> &str {
+        self.content.as_deref().unwrap_or("")
+    }
 }
 
 fn parse_tags(tags: &Option<String>) -> Vec<String> {
@@ -109,9 +117,6 @@ fn validate_input(
 ) -> std::result::Result<Vec<(String, MetadataValue)>, String> {
     if input.title.trim().is_empty() {
         return Err("Title is required.".to_string());
-    }
-    if input.content.trim().is_empty() {
-        return Err("Content is required.".to_string());
     }
     parse_metadata(&input.metadata).map_err(|e| format!("Invalid metadata: {e}"))
 }
@@ -202,7 +207,7 @@ impl DocumentFormState {
     fn from_input(input: &DocumentFormInput, error: String) -> Self {
         Self {
             title: input.title.clone(),
-            content: input.content.clone(),
+            content: input.content.clone().unwrap_or_default(),
             tags: input.tags.clone().unwrap_or_default(),
             metadata: input.metadata.clone().unwrap_or_default(),
             error: Some(error),
@@ -245,7 +250,7 @@ async fn document_form(
                     </div>
                     <div class="editor-panes" data-attr-class="mode === 'split' ? 'editor-panes split' : 'editor-panes'">
                         <div class="editor-pane editor-write-pane" data-show="mode !== 'preview'">
-                            <textarea id="content" name="content" class="editor-textarea" placeholder="Write markdown here — the preview updates as you type" required=(true) data-bind-content="" data-on:input="@post('/documents/preview', debounce: 400)">(state.content.clone())</textarea>
+                            <textarea id="content" name="content" class="editor-textarea" placeholder="Write markdown here — the preview updates as you type. Leave empty to save a title-only draft." data-bind-content="" data-on:input="@post('/documents/preview', debounce: 400)">(state.content.clone())</textarea>
                             <p class="form-hint">"Markdown is rendered on the document page."</p>
                         </div>
                         <div class="editor-pane editor-preview-pane" data-show="mode !== 'write'">
@@ -423,7 +428,7 @@ pub async fn create_document(cx: &Cx, Form(input): Form<DocumentFormInput>) -> R
 
     let doc = Document::create()
         .title(input.title.trim())
-        .content(&input.content)
+        .content(input.content())
         .exec(&mut db)
         .await
         .map_err(topcoat::router::error::internal_server_error)?;
@@ -432,7 +437,7 @@ pub async fn create_document(cx: &Cx, Form(input): Form<DocumentFormInput>) -> R
     replace_metadata(&mut db, doc.id, &entries).await?;
 
     // Index in FTS5
-    crate::fts::index_document(&mut db, &doc.id, input.title.trim(), &input.content)
+    crate::fts::index_document(&mut db, &doc.id, input.title.trim(), input.content())
         .await
         .map_err(topcoat::router::error::internal_server_error)?;
 
@@ -464,7 +469,7 @@ pub async fn update_document(cx: &Cx, Form(input): Form<DocumentFormInput>) -> R
 
     doc.update()
         .title(input.title.trim())
-        .content(&input.content)
+        .content(input.content())
         .exec(&mut db)
         .await
         .map_err(topcoat::router::error::internal_server_error)?;
@@ -473,7 +478,7 @@ pub async fn update_document(cx: &Cx, Form(input): Form<DocumentFormInput>) -> R
     replace_metadata(&mut db, doc.id, &entries).await?;
 
     // Sync FTS5 index
-    crate::fts::update_document_index(&mut db, &doc.id, input.title.trim(), &input.content)
+    crate::fts::update_document_index(&mut db, &doc.id, input.title.trim(), input.content())
         .await
         .map_err(topcoat::router::error::internal_server_error)?;
 
