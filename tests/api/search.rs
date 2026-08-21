@@ -65,10 +65,7 @@ async fn search_post_filters_by_tags() {
 
     // Act
     let response = app
-        .post_json(
-            "/rb/search",
-            json!({"query": "water", "tags": ["cooking"]}),
-        )
+        .post_json("/rb/search", json!({"query": "water", "tags": ["cooking"]}))
         .await;
 
     // Assert: only "Cooking pasta" matches "water" and is tagged "cooking"

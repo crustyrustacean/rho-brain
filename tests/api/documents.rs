@@ -62,9 +62,7 @@ async fn create_document_returns_200_with_document() {
 async fn create_document_with_existing_tag_reuses_it() {
     // Arrange
     let app = spawn_app().await;
-    let request = |title: &str| {
-        json!({"title": title, "content": "content", "tags": ["shared"]})
-    };
+    let request = |title: &str| json!({"title": title, "content": "content", "tags": ["shared"]});
 
     // Act
     app.post_json("/rb/documents", request("first")).await;

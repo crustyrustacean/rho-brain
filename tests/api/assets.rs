@@ -37,5 +37,8 @@ async fn datastar_script_is_served_as_javascript() {
         "expected the full bundle, got {} bytes",
         body.len()
     );
-    assert!(body.contains("Datastar v"), "bundle should carry its banner");
+    assert!(
+        body.contains("Datastar v"),
+        "bundle should carry its banner"
+    );
 }

@@ -38,7 +38,10 @@ mod tests {
         let md = "| a | b |\n| --- | --- |\n| 1 | 2 |";
         let html = render_markdown(md);
         assert!(html.contains("<table>"), "GFM tables should render: {html}");
-        assert!(html.contains("<td>1</td>"), "cell contents should render: {html}");
+        assert!(
+            html.contains("<td>1</td>"),
+            "cell contents should render: {html}"
+        );
     }
 
     #[test]
@@ -58,6 +61,9 @@ mod tests {
         // through by default).
         let html = render_markdown("<script>alert(1)</script>");
         assert!(!html.contains("<script>"), "raw HTML leaked: {html}");
-        assert!(html.contains("&lt;script&gt;"), "should be visible as text: {html}");
+        assert!(
+            html.contains("&lt;script&gt;"),
+            "should be visible as text: {html}"
+        );
     }
 }

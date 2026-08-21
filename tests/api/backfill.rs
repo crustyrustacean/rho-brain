@@ -45,10 +45,7 @@ async fn backfill_reindexes_existing_documents() {
     // now re-index the existing (blob-id'd) documents.
     let app2 = spawn_app_at(&url).await;
     let response = app2
-        .post_json(
-            "/rb/search",
-            serde_json::json!({ "query": marker }),
-        )
+        .post_json("/rb/search", serde_json::json!({ "query": marker }))
         .await;
 
     assert!(response.status.is_success());
@@ -59,10 +56,7 @@ async fn backfill_reindexes_existing_documents() {
         1,
         "backfill should have re-indexed the pre-existing document"
     );
-    assert!(results[0]["title"]
-        .as_str()
-        .unwrap()
-        .contains(&marker));
+    assert!(results[0]["title"].as_str().unwrap().contains(&marker));
 
     std::fs::remove_file(&path).ok();
 }

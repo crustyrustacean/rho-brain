@@ -5,11 +5,7 @@ use toasty::Db;
 use topcoat::{
     Result,
     context::{Cx, app_context},
-    router::{
-        content::Json,
-        error::bad_request,
-        query_params, route,
-    },
+    router::{content::Json, error::bad_request, query_params, route},
 };
 
 use crate::models::{Document, DocumentTag, Tag};

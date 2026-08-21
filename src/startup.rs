@@ -6,10 +6,7 @@ use topcoat::router::{Router, RouterBuilderDiscoverExt};
 /// Build the application router with all discovered routes, layouts, and
 /// pages, sharing the given database handle via the app context.
 pub fn router(db: Db) -> Router {
-    Router::builder()
-        .discover()
-        .app_context(db)
-        .build()
+    Router::builder().discover().app_context(db).build()
 }
 
 /// Connect to the database at `url`, creating the schema when the database

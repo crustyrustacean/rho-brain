@@ -63,13 +63,15 @@ async fn advertised_list_matches_known_surface() {
 
     for (method, path) in known {
         assert!(
-            advertised
-                .iter()
-                .any(|(m, p)| m == method && p == path),
+            advertised.iter().any(|(m, p)| m == method && p == path),
             "endpoint {method} {path} missing from advertised list"
         );
     }
-    assert_eq!(advertised.len(), known.len(), "advertised list has entries beyond the known surface — update this test");
+    assert_eq!(
+        advertised.len(),
+        known.len(),
+        "advertised list has entries beyond the known surface — update this test"
+    );
 }
 
 /// Every advertised endpoint exists on the live router.

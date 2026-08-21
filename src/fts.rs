@@ -1,11 +1,10 @@
 // src/fts.rs
-///
-/// SQLite FTS5 full-text search integration for documents.
-///
-/// Uses a dedicated FTS5 virtual table (`documents_fts`) that is kept in sync
-/// with the `documents` table on create/update/delete operations.  The virtual
-/// table stores the document UUID (as text), title, and content — all three
-/// columns are indexed so that MATCH queries can match against any of them.
+//! SQLite FTS5 full-text search integration for documents.
+//!
+//! Uses a dedicated FTS5 virtual table (`documents_fts`) that is kept in sync
+//! with the `documents` table on create/update/delete operations.  The virtual
+//! table stores the document UUID (as text), title, and content — all three
+//! columns are indexed so that MATCH queries can match against any of them.
 
 use toasty::Executor;
 use toasty::sql;
@@ -33,9 +32,7 @@ pub async fn index_document(
     title: &str,
     content: &str,
 ) -> toasty::Result<()> {
-    let sql = format!(
-        "INSERT INTO {FTS_TABLE} (doc_id, title, content) VALUES (?1, ?2, ?3)"
-    );
+    let sql = format!("INSERT INTO {FTS_TABLE} (doc_id, title, content) VALUES (?1, ?2, ?3)");
     sql::statement(&sql)
         .bind(doc_id.to_string())
         .bind(title)
@@ -52,9 +49,7 @@ pub async fn update_document_index(
     title: &str,
     content: &str,
 ) -> toasty::Result<()> {
-    let sql = format!(
-        "UPDATE {FTS_TABLE} SET title = ?2, content = ?3 WHERE doc_id = ?1"
-    );
+    let sql = format!("UPDATE {FTS_TABLE} SET title = ?2, content = ?3 WHERE doc_id = ?1");
     sql::statement(&sql)
         .bind(doc_id.to_string())
         .bind(title)
@@ -65,10 +60,7 @@ pub async fn update_document_index(
 }
 
 /// Remove a document from the FTS index.
-pub async fn remove_document(
-    db: &mut dyn Executor,
-    doc_id: &uuid::Uuid,
-) -> toasty::Result<()> {
+pub async fn remove_document(db: &mut dyn Executor, doc_id: &uuid::Uuid) -> toasty::Result<()> {
     let sql = format!("DELETE FROM {FTS_TABLE} WHERE doc_id = ?1");
     sql::statement(&sql)
         .bind(doc_id.to_string())
@@ -100,32 +92,28 @@ pub async fn backfill_if_empty(db: &mut dyn Executor) -> toasty::Result<()> {
     // Check if the FTS table already has data.
     let count_sql = format!("SELECT COUNT(*) AS cnt FROM {FTS_TABLE}");
     let rows = sql::query(&count_sql).exec(db).await?;
-    if let Some(row) = rows.first() {
-        if let Some(record) = row.as_record() {
-            let fields: Vec<&Value> = record.iter().collect();
-            if let Some(cnt) = fields.first().and_then(|v| v.to_i64()) {
-                if cnt > 0 {
-                    return Ok(());
-                }
-            }
-        }
+    if let Some(row) = rows.first()
+        && let Some(record) = row.as_record()
+        && let Some(cnt) = record.iter().next().and_then(|v| v.to_i64())
+        && cnt > 0
+    {
+        return Ok(());
     }
 
     // Index all non-deleted documents via raw SQL against the documents table.
-    let select_sql = format!(
-        "SELECT id, title, content FROM documents WHERE deleted_at IS NULL"
-    );
-    let docs = sql::query(&select_sql).exec(db).await?;
+    let docs = sql::query("SELECT id, title, content FROM documents WHERE deleted_at IS NULL")
+        .exec(db)
+        .await?;
     for doc in docs {
-        if let Some(record) = doc.as_record() {
-            let fields: Vec<&Value> = record.iter().collect();
-            if fields.len() >= 3 {
-                if let (Some(title), Some(content)) = (fields[1].as_str(), fields[2].as_str()) {
-                if let Some(doc_id) = fields.first().and_then(|v| doc_id_from_value(v)) {
-                    index_document(db, &doc_id, title, content).await?;
-                }
-            }
-            }
+        let Some(record) = doc.as_record() else {
+            continue;
+        };
+        let fields: Vec<&Value> = record.iter().collect();
+        if fields.len() >= 3
+            && let (Some(title), Some(content)) = (fields[1].as_str(), fields[2].as_str())
+            && let Some(doc_id) = fields.first().and_then(|v| doc_id_from_value(v))
+        {
+            index_document(db, &doc_id, title, content).await?;
         }
     }
 
@@ -189,21 +177,20 @@ pub async fn search(
 
     let mut results = Vec::new();
     for row in rows {
-        if let Some(record) = row.as_record() {
-            let fields: Vec<&Value> = record.iter().collect();
-            if fields.len() >= 3 {
-                if let (Some(doc_id_str), Some(title), Some(snippet)) =
-                    (fields[0].as_str(), fields[1].as_str(), fields[2].as_str())
-                {
-                    if let Ok(doc_id) = uuid::Uuid::parse_str(doc_id_str) {
-                        results.push(FtsResult {
-                            doc_id,
-                            title: title.to_string(),
-                            snippet: snippet.to_string(),
-                        });
-                    }
-                }
-            }
+        let Some(record) = row.as_record() else {
+            continue;
+        };
+        let fields: Vec<&Value> = record.iter().collect();
+        if fields.len() >= 3
+            && let (Some(doc_id_str), Some(title), Some(snippet)) =
+                (fields[0].as_str(), fields[1].as_str(), fields[2].as_str())
+            && let Ok(doc_id) = uuid::Uuid::parse_str(doc_id_str)
+        {
+            results.push(FtsResult {
+                doc_id,
+                title: title.to_string(),
+                snippet: snippet.to_string(),
+            });
         }
     }
 

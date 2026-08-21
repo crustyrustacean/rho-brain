@@ -368,7 +368,7 @@ pub async fn create_document(cx: &Cx, Form(input): Form<DocumentFormInput>) -> R
         .await
         .map_err(topcoat::router::error::internal_server_error)?;
 
-    see_other(&format!("/documents/{}?saved=1", doc.id)).into_response(cx)
+    see_other(format!("/documents/{}?saved=1", doc.id)).into_response(cx)
 }
 
 #[route(POST "/documents/{document_id}/edit")]
@@ -413,7 +413,7 @@ pub async fn update_document(cx: &Cx, Form(input): Form<DocumentFormInput>) -> R
         .await
         .map_err(topcoat::router::error::internal_server_error)?;
 
-    see_other(&format!("/documents/{}?saved=1", doc.id)).into_response(cx)
+    see_other(format!("/documents/{}?saved=1", doc.id)).into_response(cx)
 }
 
 /// Load all tag names in the knowledge base, for the form's autocomplete list.

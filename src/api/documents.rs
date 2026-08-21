@@ -131,29 +131,27 @@ pub async fn create_document(
     }
 
     // Handle metadata
-    if let Some(meta) = input.metadata {
-        if let serde_json::Value::Object(map) = meta {
-            for (key, value) in map {
-                let builder = Metadata::create().document_id(doc.id).key(&key);
+    if let Some(serde_json::Value::Object(map)) = input.metadata {
+        for (key, value) in map {
+            let builder = Metadata::create().document_id(doc.id).key(&key);
 
-                let builder = match value {
-                    serde_json::Value::String(s) => builder.value_text(s),
-                    serde_json::Value::Number(n) => {
-                        if let Some(i) = n.as_i64() {
-                            builder.value_int(i)
-                        } else {
-                            builder.value_text(n.to_string())
-                        }
+            let builder = match value {
+                serde_json::Value::String(s) => builder.value_text(s),
+                serde_json::Value::Number(n) => {
+                    if let Some(i) = n.as_i64() {
+                        builder.value_int(i)
+                    } else {
+                        builder.value_text(n.to_string())
                     }
-                    serde_json::Value::Bool(b) => builder.value_bool(b),
-                    other => builder.value_text(other.to_string()),
-                };
+                }
+                serde_json::Value::Bool(b) => builder.value_bool(b),
+                other => builder.value_text(other.to_string()),
+            };
 
-                builder
-                    .exec(&mut db)
-                    .await
-                    .map_err(topcoat::router::error::internal_server_error)?;
-            }
+            builder
+                .exec(&mut db)
+                .await
+                .map_err(topcoat::router::error::internal_server_error)?;
         }
     }
 
