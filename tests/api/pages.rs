@@ -24,6 +24,23 @@ async fn home_page_renders_layout_and_empty_state() {
 }
 
 #[tokio::test]
+async fn layout_loads_the_datastar_runtime() {
+    // Arrange
+    let app = spawn_app().await;
+
+    // Act: any page under the root layout
+    let html = app.get("/").await.text();
+
+    // Assert: the vendored runtime is loaded as a module script. Module
+    // scripts are deferred by default, so pages render before it runs, and
+    // pages without data-* attributes are unaffected by its presence.
+    assert!(
+        html.contains(r#"<script type="module" src="/js/datastar.js">"#),
+        "layout should load the vendored runtime:\n{html}"
+    );
+}
+
+#[tokio::test]
 async fn document_lifecycle_through_html_forms() {
     // Arrange
     let app = spawn_app().await;

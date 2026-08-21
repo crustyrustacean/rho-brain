@@ -26,6 +26,7 @@ pub async fn root_layout(slot: Result) -> Result {
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <title>"rho-brain"</title>
                 <style>(Unescaped::new_unchecked(CSS))</style>
+                <script type="module" src="/js/datastar.js"></script>
             </head>
             <body>
                 <header>
