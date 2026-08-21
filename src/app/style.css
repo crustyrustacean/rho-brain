@@ -378,15 +378,20 @@ a.tag:hover {
     box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.06);
 }
 
-/* On phones, Split collapses to the editor alone: the panes would otherwise
-   stack into a very long column with the preview far off-screen. */
+/* On phones, Split stacks instead of sitting side-by-side: the editor on
+   top, the live preview below it, both capped so they fit together. Hiding
+   the preview instead made Split indistinguishable from Write. */
 @media (max-width: 800px) {
     .editor-panes.split {
         grid-template-columns: minmax(0, 1fr);
     }
 
+    .editor-panes.split .editor-textarea {
+        min-height: 35vh;
+    }
+
     .editor-panes.split .editor-preview-pane {
-        display: none;
+        max-height: 45vh;
     }
 }
 

@@ -137,6 +137,35 @@ async fn new_document_page_has_editor_structure() {
 }
 
 #[tokio::test]
+async fn phone_layout_stacks_split_view_instead_of_hiding_preview() {
+    // Arrange
+    let app = spawn_app().await;
+
+    // Act: the stylesheet is served inline in the layout
+    let html = app.get("/documents/new").await.text();
+
+    // Assert: under 800px the split panes stack in one column with capped
+    // heights so both fit, and nothing display:none's the preview pane
+    // (hiding it made Split indistinguishable from Write on a phone).
+    assert!(
+        html.contains("@media (max-width: 800px)"),
+        "mobile media query missing:\n{html}"
+    );
+    assert!(
+        html.contains("grid-template-columns: minmax(0, 1fr);"),
+        "stacked single-column split rule missing:\n{html}"
+    );
+    assert!(
+        html.contains("max-height: 45vh"),
+        "capped preview height for stacked split missing:\n{html}"
+    );
+    assert!(
+        !html.contains("display: none"),
+        "some pane is display:none'd in CSS:\n{html}"
+    );
+}
+
+#[tokio::test]
 async fn edit_page_shows_server_rendered_initial_preview() {
     // Arrange
     let app = spawn_app().await;
