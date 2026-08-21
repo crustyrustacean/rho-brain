@@ -215,6 +215,7 @@ async fn document_form(
     action: &str,
     cancel_href: &str,
     submit_label: &str,
+    draft_key: &str,
     state: &DocumentFormState,
     all_tags: &[String],
 ) -> Result {
@@ -231,7 +232,7 @@ async fn document_form(
             <div class="error" role="alert">(state.error.as_deref().unwrap_or_default())</div>
         }
         <div class="card editor-card">
-            <form method="post" action=(action)>
+            <form method="post" action=(action) data-draft=(draft_key)>
                 <div class="form-group">
                     <label for="title">"Title"</label>
                     <input type="text" id="title" name="title" value=(state.title.clone()) required=(true)>
@@ -275,25 +276,34 @@ async fn document_form(
                 </div>
             </form>
         </div>
+        <script src="/js/editor.js" defer=""></script>
     }
+}
+
+/// Everything that varies between the new-document and edit-document forms.
+struct FormSpec {
+    heading: &'static str,
+    action: String,
+    cancel_href: String,
+    submit_label: &'static str,
+    /// Key the client-side draft autosave stores under ("new" or the id).
+    draft_key: String,
 }
 
 /// A full form page: heading plus the form.
 async fn form_page(
     cx: &Cx,
-    heading: &str,
-    action: &str,
-    cancel_href: &str,
-    submit_label: &str,
+    spec: &FormSpec,
     state: &DocumentFormState,
     all_tags: &[String],
 ) -> Result {
     view! { cx =>
-        <h2 class="page-title">(heading)</h2>
+        <h2 class="page-title">(spec.heading)</h2>
         document_form(
-            action: action,
-            cancel_href: cancel_href,
-            submit_label: submit_label,
+            action: spec.action.as_str(),
+            cancel_href: spec.cancel_href.as_str(),
+            submit_label: spec.submit_label,
+            draft_key: spec.draft_key.as_str(),
             state: state,
             all_tags: all_tags
         )
@@ -309,10 +319,13 @@ pub async fn new_document(cx: &Cx) -> Result {
 
     form_page(
         cx,
-        "New Document",
-        "/documents",
-        "/",
-        "Create",
+        &FormSpec {
+            heading: "New Document",
+            action: "/documents".into(),
+            cancel_href: "/".into(),
+            submit_label: "Create",
+            draft_key: "new".into(),
+        },
         &DocumentFormState::blank(),
         &all_tags,
     )
@@ -328,8 +341,13 @@ pub async fn edit_document(cx: &Cx) -> Result {
     let metadata = format_metadata(&load_metadata_pairs(&mut db, doc.id).await?);
     let all_tags = load_all_tag_names(&mut db).await?;
 
-    let action = format!("/documents/{}/edit", doc.id);
-    let cancel_href = format!("/documents/{}", doc.id);
+    let spec = FormSpec {
+        heading: "Edit Document",
+        action: format!("/documents/{}/edit", doc.id),
+        cancel_href: format!("/documents/{}", doc.id),
+        submit_label: "Save Changes",
+        draft_key: doc.id.to_string(),
+    };
     let state = DocumentFormState {
         title: doc.title.clone(),
         content: doc.content.clone(),
@@ -338,16 +356,7 @@ pub async fn edit_document(cx: &Cx) -> Result {
         error: None,
     };
 
-    form_page(
-        cx,
-        "Edit Document",
-        &action,
-        &cancel_href,
-        "Save Changes",
-        &state,
-        &all_tags,
-    )
-    .await
+    form_page(cx, &spec, &state, &all_tags).await
 }
 
 // ── Live preview ───────────────────────────────────
@@ -397,10 +406,13 @@ pub async fn create_document(cx: &Cx, Form(input): Form<DocumentFormInput>) -> R
             let all_tags = load_all_tag_names(&mut db).await?;
             let page = form_page(
                 cx,
-                "New Document",
-                "/documents",
-                "/",
-                "Create",
+                &FormSpec {
+                    heading: "New Document",
+                    action: "/documents".into(),
+                    cancel_href: "/".into(),
+                    submit_label: "Create",
+                    draft_key: "new".into(),
+                },
                 &state,
                 &all_tags,
             )
@@ -436,20 +448,16 @@ pub async fn update_document(cx: &Cx, Form(input): Form<DocumentFormInput>) -> R
     let entries = match validate_input(&input) {
         Ok(entries) => entries,
         Err(error) => {
-            let action = format!("/documents/{}/edit", doc.id);
-            let cancel_href = format!("/documents/{}", doc.id);
+            let spec = FormSpec {
+                heading: "Edit Document",
+                action: format!("/documents/{}/edit", doc.id),
+                cancel_href: format!("/documents/{}", doc.id),
+                submit_label: "Save Changes",
+                draft_key: doc.id.to_string(),
+            };
             let state = DocumentFormState::from_input(&input, error);
             let all_tags = load_all_tag_names(&mut db).await?;
-            let page = form_page(
-                cx,
-                "Edit Document",
-                &action,
-                &cancel_href,
-                "Save Changes",
-                &state,
-                &all_tags,
-            )
-            .await?;
+            let page = form_page(cx, &spec, &state, &all_tags).await?;
             return (StatusCode::UNPROCESSABLE_ENTITY, page).into_response(cx);
         }
     };

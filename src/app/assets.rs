@@ -26,3 +26,10 @@ use topcoat::{
 pub async fn datastar_js() -> Result<Js<&'static [u8]>> {
     Ok(Js(include_bytes!("assets/datastar-v1.0.2.js")))
 }
+
+/// The rho-brain editor enhancements (draft autosave). Hand-written, kept
+/// small; served the same way as the vendored Datastar bundle.
+#[route(GET "/js/editor.js")]
+pub async fn editor_js() -> Result<Js<&'static [u8]>> {
+    Ok(Js(include_bytes!("assets/editor.js")))
+}

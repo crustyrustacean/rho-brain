@@ -8,6 +8,70 @@
 use crate::helpers::spawn_app;
 
 #[tokio::test]
+async fn editor_script_is_served_as_javascript() {
+    // Arrange
+    let app = spawn_app().await;
+
+    // Act
+    let response = app.get("/js/editor.js").await;
+
+    // Assert
+    assert_eq!(response.status, 200);
+    let content_type = response
+        .headers
+        .get("content-type")
+        .expect("content-type header present")
+        .to_str()
+        .unwrap();
+    assert!(content_type.contains("javascript"), "{content_type}");
+    let body = response.text();
+    assert!(
+        body.len() > 500,
+        "expected the real editor script, got {} bytes",
+        body.len()
+    );
+    assert!(body.contains("rho-brain"), "body: {body}");
+}
+
+#[tokio::test]
+async fn form_pages_wire_up_draft_autosave() {
+    // Arrange
+    let app = spawn_app().await;
+    let create = app.post_form("/documents", "title=T&content=C").await;
+    let doc_path = create
+        .headers
+        .get("location")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .split('?')
+        .next()
+        .unwrap()
+        .to_string();
+    let doc_id = doc_path.trim_start_matches("/documents/");
+
+    // Act
+    let new_page = app.get("/documents/new").await.text();
+    let edit_page = app.get(&format!("{doc_path}/edit")).await.text();
+
+    // Assert: both pages load the editor script and key drafts per document
+    // (a "new" draft must never clobber an existing document's draft)
+    assert!(
+        new_page.contains(r#"<script src="/js/editor.js" defer="">"#),
+        "{new_page}"
+    );
+    assert!(
+        edit_page.contains(r#"<script src="/js/editor.js" defer="">"#),
+        "{edit_page}"
+    );
+    assert!(new_page.contains(r#"data-draft="new""#), "{new_page}");
+    assert!(
+        edit_page.contains(&format!("data-draft=\"{doc_id}\"")),
+        "{edit_page}"
+    );
+}
+
+#[tokio::test]
 async fn new_document_page_has_editor_structure() {
     // Arrange
     let app = spawn_app().await;
