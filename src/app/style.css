@@ -321,6 +321,23 @@ a.tag:hover {
     min-width: 0;
 }
 
+/* Hint and live word count share the row under the textarea. */
+.editor-statusline {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1rem;
+}
+
+.word-count {
+    color: #999;
+    font-size: 0.8rem;
+    /* Digits keep their width as the count changes, so the text doesn't jitter
+       while typing. */
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
 .editor-textarea {
     width: 100%;
     min-height: 320px;

@@ -19,6 +19,25 @@
     var FIELDS = ["title", "content", "tags", "metadata"];
     var SAVE_DEBOUNCE_MS = 1000;
 
+    // ── Live word count ──
+    // The server renders the initial count; this keeps it current on every
+    // keystroke. Listening on the form means the restore-a-draft path (which
+    // re-dispatches input events) updates it too.
+    var countEl = document.getElementById("word-count");
+
+    function countWords(text) {
+        var trimmed = text.trim();
+        return trimmed === "" ? 0 : trimmed.split(/\s+/).length;
+    }
+
+    function updateWordCount() {
+        if (!countEl) return;
+        var n = countWords(form.elements.content.value);
+        countEl.textContent = n === 1 ? "1 word" : n + " words";
+    }
+
+    updateWordCount();
+
     function readDraft() {
         try {
             var raw = window.localStorage.getItem(key);
@@ -70,6 +89,7 @@
     // Save a beat after the last keystroke.
     var timer = null;
     form.addEventListener("input", function () {
+        updateWordCount();
         window.clearTimeout(timer);
         timer = window.setTimeout(function () {
             writeDraft(currentValues());

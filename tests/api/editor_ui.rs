@@ -111,6 +111,14 @@ async fn new_document_page_has_editor_structure() {
         "{html}"
     );
 
+    // A word count is visible in the write pane, starting at zero on a blank
+    // form
+    assert!(
+        html.contains(r#"<span id="word-count" class="word-count">"#),
+        "word count element missing:\n{html}"
+    );
+    assert!(html.contains("0 words"), "{html}");
+
     // The textarea binds the content signal (value form) and refreshes the
     // preview with a debounced modifier — not an action argument
     assert!(html.contains(r#"data-bind="content""#), "{html}");
@@ -199,4 +207,23 @@ async fn edit_page_shows_server_rendered_initial_preview() {
 
     // And the textarea carries the raw markdown for editing
     assert!(html.contains("Hello **world**"), "{html}");
+
+    // The word counter starts at the correct server-rendered value for the
+    // existing content (four words)
+    assert!(html.contains("4 words"), "expected SSR'd 4 words:\n{html}");
+}
+
+#[tokio::test]
+async fn editor_script_keeps_word_count_live() {
+    // Arrange
+    let app = spawn_app().await;
+
+    // Act
+    let js = app.get("/js/editor.js").await.text();
+
+    // Assert: the script targets the counter element and mirrors the server's
+    // whitespace-split counting rule
+    assert!(js.contains("word-count"), "{js}");
+    assert!(js.contains("updateWordCount"), "{js}");
+    assert!(js.contains("split(/\\s+/)"), "counting rule missing:\n{js}");
 }

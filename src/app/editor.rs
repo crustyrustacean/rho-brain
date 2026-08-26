@@ -133,6 +133,12 @@ fn format_metadata(pairs: &[(String, String)]) -> String {
     out
 }
 
+/// Word count for the editor's live counter, matching the client-side count:
+/// whitespace-separated, non-empty runs.
+fn word_count(content: &str) -> usize {
+    content.split_whitespace().count()
+}
+
 /// Replace a document's tags with the given names.
 async fn replace_tags(db: &mut Db, doc_id: uuid::Uuid, tag_names: &[String]) -> Result<()> {
     DocumentTag::filter_by_document_id(doc_id)
@@ -232,6 +238,10 @@ async fn document_form(
         render_markdown(&state.content)
     };
 
+    // Server-rendered so the counter is correct before any JavaScript runs;
+    // editor.js keeps it live from then on.
+    let words = word_count(&state.content);
+
     view! {
         if state.error.is_some() {
             <div class="error" role="alert">(state.error.as_deref().unwrap_or_default())</div>
@@ -251,7 +261,16 @@ async fn document_form(
                     <div class="editor-panes split" data-class:split="$mode === 'split'">
                         <div class="editor-pane editor-write-pane" data-show="$mode !== 'preview'">
                             <textarea id="content" name="content" class="editor-textarea" placeholder="Write markdown here — the preview updates as you type. Leave empty to save a title-only draft." data-bind="content" data-on:input__debounce.400ms="@post('/documents/preview')">(state.content.clone())</textarea>
-                            <p class="form-hint">"Markdown is rendered on the document page."</p>
+                            <div class="editor-statusline">
+                                <p class="form-hint">"Markdown is rendered on the document page."</p>
+                                <span id="word-count" class="word-count">
+                                    if words == 1 {
+                                        "1 word"
+                                    } else {
+                                        (words) " words"
+                                    }
+                                </span>
+                            </div>
                         </div>
                         <div class="editor-pane editor-preview-pane" data-show="$mode !== 'write'">
                             <div id="preview" class="markdown-content">(Unescaped::new_unchecked(initial_preview))</div>
