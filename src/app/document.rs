@@ -11,7 +11,7 @@ use topcoat::{
         error::{SeeOther, bad_request, not_found, see_other},
         page, path_param, query_params, route,
     },
-    view::{Unescaped, view},
+    view::{Unescaped, View, view},
 };
 
 use crate::models::{Document, DocumentTag, Metadata, Tag};
@@ -86,7 +86,7 @@ pub(crate) async fn load_active_document(db: &mut Db, id: &uuid::Uuid) -> Result
 // ── Pages ───────────────────────────────────────────
 
 #[page("/documents/{document_id}")]
-pub async fn view_document(cx: &Cx) -> Result {
+pub async fn view_document(cx: &Cx) -> Result<impl View> {
     let mut db = db(cx);
     let id = document_id(cx)?;
     let doc = load_active_document(&mut db, &id).await?;
@@ -108,7 +108,7 @@ pub async fn view_document(cx: &Cx) -> Result {
     let updated = doc.updated_at.strftime("%Y-%m-%d %H:%M").to_string();
     let content_html = render_markdown(&doc.content);
 
-    view! {
+    Ok(view! {
         if saved {
             <div class="flash" role="status">"Document saved."</div>
         }
@@ -145,7 +145,7 @@ pub async fn view_document(cx: &Cx) -> Result {
             }
             <div class="markdown-content">(Unescaped::new_unchecked(content_html))</div>
         </div>
-    }
+    })
 }
 
 // ── Form handlers (POST → redirect → GET) ───────────

@@ -18,7 +18,7 @@ use topcoat::{
         response::{IntoResponse, Response},
         route,
     },
-    view::{Unescaped, component, view},
+    view::{Unescaped, View, ViewExt, component, view},
 };
 
 use crate::api::documents::get_or_create_tag;
@@ -223,34 +223,45 @@ impl DocumentFormState {
 
 #[component]
 async fn document_form(
-    action: &str,
-    cancel_href: &str,
-    submit_label: &str,
-    draft_key: &str,
-    state: &DocumentFormState,
-    all_tags: &[String],
-) -> Result {
+    action: String,
+    cancel_href: String,
+    submit_label: &'static str,
+    draft_key: String,
+    state: DocumentFormState,
+    all_tags: Vec<String>,
+) -> Result<impl View> {
+    // Destructure up front: a view returned from here cannot borrow the
+    // function's locals, so everything the template mentions must be moved
+    // into it (topcoat 0.7 views are lazy, like an `async move` block).
+    let DocumentFormState {
+        title,
+        content,
+        tags,
+        metadata,
+        error,
+    } = state;
+
     // The preview pane starts populated so the split view is correct before
     // any Datastar round-trip.
-    let initial_preview = if state.content.trim().is_empty() {
+    let initial_preview = if content.trim().is_empty() {
         String::new()
     } else {
-        render_markdown(&state.content)
+        render_markdown(&content)
     };
 
     // Server-rendered so the counter is correct before any JavaScript runs;
     // editor.js keeps it live from then on.
-    let words = word_count(&state.content);
+    let words = word_count(&content);
 
-    view! {
-        if state.error.is_some() {
-            <div class="error" role="alert">(state.error.as_deref().unwrap_or_default())</div>
+    Ok(view! {
+        if error.is_some() {
+            <div class="error" role="alert">(error.as_deref().unwrap_or_default())</div>
         }
         <div class="card editor-card">
             <form method="post" action=(action) data-draft=(draft_key)>
                 <div class="form-group">
                     <label for="title">"Title"</label>
-                    <input type="text" id="title" name="title" value=(state.title.clone()) required=(true)>
+                    <input type="text" id="title" name="title" value=(title) required=(true)>
                 </div>
                 <div class="editor" data-signals:mode="'split'">
                     <div class="editor-toolbar" role="toolbar" aria-label="Editor view mode">
@@ -260,7 +271,7 @@ async fn document_form(
                     </div>
                     <div class="editor-panes split" data-class:split="$mode === 'split'">
                         <div class="editor-pane editor-write-pane" data-show="$mode !== 'preview'">
-                            <textarea id="content" name="content" class="editor-textarea" placeholder="Write markdown here — the preview updates as you type. Leave empty to save a title-only draft." data-bind="content" data-on:input__debounce.400ms="@post('/documents/preview')">(state.content.clone())</textarea>
+                            <textarea id="content" name="content" class="editor-textarea" placeholder="Write markdown here — the preview updates as you type. Leave empty to save a title-only draft." data-bind="content" data-on:input__debounce.400ms="@post('/documents/preview')">(content)</textarea>
                             <div class="editor-statusline">
                                 <p class="form-hint">"Markdown is rendered on the document page."</p>
                                 <span id="word-count" class="word-count">
@@ -281,7 +292,7 @@ async fn document_form(
                     <summary>"Tags &amp; metadata"</summary>
                     <div class="form-group">
                         <label for="tags">"Tags (comma separated)"</label>
-                        <input type="text" id="tags" name="tags" value=(state.tags.clone()) list="tag-suggestions" placeholder="tag1, tag2, tag3">
+                        <input type="text" id="tags" name="tags" value=(tags) list="tag-suggestions" placeholder="tag1, tag2, tag3">
                         <datalist id="tag-suggestions">
                             for tag in all_tags {
                                 <option value=(tag)></option>
@@ -290,7 +301,7 @@ async fn document_form(
                     </div>
                     <div class="form-group">
                         <label for="metadata">"Metadata (one key=value per line)"</label>
-                        <textarea id="metadata" name="metadata" class="metadata-input" placeholder="priority=high&#10;version=2&#10;pinned=true">(state.metadata.clone())</textarea>
+                        <textarea id="metadata" name="metadata" class="metadata-input" placeholder="priority=high&#10;version=2&#10;pinned=true">(metadata)</textarea>
                         <p class="form-hint">"Values are typed automatically: true/false become booleans, integers become numbers, everything else is text."</p>
                     </div>
                 </details>
@@ -301,7 +312,7 @@ async fn document_form(
             </form>
         </div>
         <script src="/js/editor.js" defer=""></script>
-    }
+    })
 }
 
 /// Everything that varies between the new-document and edit-document forms.
@@ -315,49 +326,54 @@ struct FormSpec {
 }
 
 /// A full form page: heading plus the form.
+///
+/// Takes everything by value because the returned view owns its content: in
+/// topcoat 0.7 a `view!` captures by move, and a view may not borrow the
+/// function's own locals, so the pages that return it can hand off owned
+/// data instead.
 async fn form_page(
     cx: &Cx,
-    spec: &FormSpec,
-    state: &DocumentFormState,
-    all_tags: &[String],
-) -> Result {
-    view! { cx =>
+    spec: FormSpec,
+    state: DocumentFormState,
+    all_tags: Vec<String>,
+) -> Result<impl View> {
+    Ok(view! { cx =>
         <h2 class="page-title">(spec.heading)</h2>
         document_form(
-            action: spec.action.as_str(),
-            cancel_href: spec.cancel_href.as_str(),
+            action: spec.action,
+            cancel_href: spec.cancel_href,
             submit_label: spec.submit_label,
-            draft_key: spec.draft_key.as_str(),
+            draft_key: spec.draft_key,
             state: state,
             all_tags: all_tags
         )
-    }
+    })
 }
 
 // ── Pages ───────────────────────────────────────────
 
 #[page("/documents/new")]
-pub async fn new_document(cx: &Cx) -> Result {
+pub async fn new_document(cx: &Cx) -> Result<impl View> {
     let mut db = db(cx);
     let all_tags = load_all_tag_names(&mut db).await?;
 
     form_page(
         cx,
-        &FormSpec {
+        FormSpec {
             heading: "New Document",
             action: "/documents".into(),
             cancel_href: "/".into(),
             submit_label: "Create",
             draft_key: "new".into(),
         },
-        &DocumentFormState::blank(),
-        &all_tags,
+        DocumentFormState::blank(),
+        all_tags,
     )
     .await
 }
 
 #[page("/documents/{document_id}/edit")]
-pub async fn edit_document(cx: &Cx) -> Result {
+pub async fn edit_document(cx: &Cx) -> Result<impl View> {
     let mut db = db(cx);
     let id = document_id(cx)?;
     let doc = load_active_document(&mut db, &id).await?;
@@ -380,7 +396,7 @@ pub async fn edit_document(cx: &Cx) -> Result {
         error: None,
     };
 
-    form_page(cx, &spec, &state, &all_tags).await
+    form_page(cx, spec, state, all_tags).await
 }
 
 // ── Live preview ───────────────────────────────────
@@ -411,8 +427,10 @@ pub async fn preview_document(
 
     let fragment = view! { cx =>
         <div id="preview" class="markdown-content">(Unescaped::new_unchecked(rendered))</div>
-    }?;
-    Ok(PatchElements::new(fragment.render(cx)))
+    };
+    // Views are lazy in topcoat 0.7: resolve the fragment to its rendered
+    // content before handing the HTML to the Datastar patch.
+    Ok(PatchElements::new(fragment.single().await?.render(cx)))
 }
 
 // ── Form handlers (POST → redirect → GET) ───────────
@@ -430,18 +448,20 @@ pub async fn create_document(cx: &Cx, Form(input): Form<DocumentFormInput>) -> R
             let all_tags = load_all_tag_names(&mut db).await?;
             let page = form_page(
                 cx,
-                &FormSpec {
+                FormSpec {
                     heading: "New Document",
                     action: "/documents".into(),
                     cancel_href: "/".into(),
                     submit_label: "Create",
                     draft_key: "new".into(),
                 },
-                &state,
-                &all_tags,
+                state,
+                all_tags,
             )
             .await?;
-            return (StatusCode::UNPROCESSABLE_ENTITY, page).into_response(cx);
+            // A view in a tuple response is resolved to its rendered content
+            // first (topcoat 0.7), yielding a `ViewHandle`.
+            return (StatusCode::UNPROCESSABLE_ENTITY, page.single().await?).into_response(cx);
         }
     };
 
@@ -481,8 +501,8 @@ pub async fn update_document(cx: &Cx, Form(input): Form<DocumentFormInput>) -> R
             };
             let state = DocumentFormState::from_input(&input, error);
             let all_tags = load_all_tag_names(&mut db).await?;
-            let page = form_page(cx, &spec, &state, &all_tags).await?;
-            return (StatusCode::UNPROCESSABLE_ENTITY, page).into_response(cx);
+            let page = form_page(cx, spec, state, all_tags).await?;
+            return (StatusCode::UNPROCESSABLE_ENTITY, page.single().await?).into_response(cx);
         }
     };
 

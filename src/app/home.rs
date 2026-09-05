@@ -5,7 +5,7 @@ use topcoat::{
     Result,
     context::{Cx, app_context},
     router::{page, query_params},
-    view::{component, view},
+    view::{View, ViewExt, component, view},
 };
 
 use super::document::load_tag_names;
@@ -26,8 +26,8 @@ struct HomeQuery {
 // ── Components ──────────────────────────────────────
 
 #[component]
-async fn stats_display(total: usize, unique_tags: usize, active: usize) -> Result {
-    view! {
+async fn stats_display(total: usize, unique_tags: usize, active: usize) -> Result<impl View> {
+    Ok(view! {
         <div class="stats-grid">
             <div class="stat-card">
                 <div class="stat-value">(total)</div>
@@ -42,17 +42,17 @@ async fn stats_display(total: usize, unique_tags: usize, active: usize) -> Resul
                 <div class="stat-label">"Active Documents"</div>
             </div>
         </div>
-    }
+    })
 }
 
 #[component]
-async fn search_bar(query: &str) -> Result {
-    view! {
+async fn search_bar(query: &str) -> Result<impl View> {
+    Ok(view! {
         <form class="search-bar" method="get" action="/">
             <input type="text" name="q" placeholder="Search documents..." value=(query)>
             <button type="submit" class="btn btn-primary">"Search"</button>
         </form>
-    }
+    })
 }
 
 struct DocumentCard {
@@ -64,9 +64,9 @@ struct DocumentCard {
 }
 
 #[component]
-async fn document_card(card: DocumentCard) -> Result {
+async fn document_card(card: DocumentCard) -> Result<impl View> {
     let href = format!("/documents/{}", card.id);
-    view! {
+    Ok(view! {
         <article class="document-item">
             <a class="document-title" href=(href)>(card.title)</a>
             <div class="document-content">(card.excerpt)</div>
@@ -81,13 +81,13 @@ async fn document_card(card: DocumentCard) -> Result {
                 </div>
             }
         </article>
-    }
+    })
 }
 
 // ── Page ────────────────────────────────────────────
 
 #[page("/")]
-pub async fn home(cx: &Cx) -> Result {
+pub async fn home(cx: &Cx) -> Result<impl View> {
     let mut db = db(cx);
     let params = query_params::<HomeQuery>(cx).ok();
     let search = params
@@ -122,7 +122,7 @@ pub async fn home(cx: &Cx) -> Result {
 
     if has_unknown_tag {
         let query_str = search.clone().unwrap_or_default();
-        return view! {
+        return Ok(view! {
             stats_display(total: total, unique_tags: unique_tags, active: active)
             search_bar(query: &query_str)
             <div class="actions">
@@ -132,7 +132,8 @@ pub async fn home(cx: &Cx) -> Result {
                 <h3>"No documents found"</h3>
                 <p>"Create your first document to get started!"</p>
             </div>
-        };
+        }
+        .boxed());
     }
 
     // Resolve tag name to ID for primitive filtering (workaround for toasty's
@@ -210,7 +211,7 @@ pub async fn home(cx: &Cx) -> Result {
     let filtering = tag_filter.is_some();
     let no_results = cards.is_empty();
 
-    view! {
+    Ok(view! {
         stats_display(total: total, unique_tags: unique_tags, active: active)
 
         search_bar(query: &query_str)
@@ -245,4 +246,5 @@ pub async fn home(cx: &Cx) -> Result {
             </div>
         }
     }
+    .boxed())
 }

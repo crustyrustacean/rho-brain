@@ -2,8 +2,8 @@
 
 use topcoat::{
     Result,
-    router::layout,
-    view::{Unescaped, view},
+    router::{Slot, layout},
+    view::{Unescaped, View, view},
 };
 
 mod assets;
@@ -17,8 +17,8 @@ const CSS: &str = include_str!("app/style.css");
 // ── Layout ─────────────────────────────────────────
 
 #[layout("/")]
-pub async fn root_layout(slot: Result) -> Result {
-    view! {
+pub async fn root_layout(slot: Slot<'_>) -> Result<impl View> {
+    Ok(view! {
         <!DOCTYPE html>
         <html lang="en">
             <head>
@@ -39,9 +39,9 @@ pub async fn root_layout(slot: Result) -> Result {
                     </div>
                 </header>
                 <main class="container">
-                    (slot?)
+                    (slot)
                 </main>
             </body>
         </html>
-    }
+    })
 }
