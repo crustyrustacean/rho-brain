@@ -2,11 +2,19 @@
 
 use toasty::Db;
 use topcoat::router::{Router, RouterBuilderDiscoverExt};
+use topcoat::runtime::RouterBuilderRuntimeExt;
 
 /// Build the application router with all discovered routes, layouts, and
 /// pages, sharing the given database handle via the app context.
 pub fn router(db: Db) -> Router {
-    Router::builder().discover().app_context(db).build()
+    // `.runtime()` mounts the browser-script routes required by topcoat 0.8
+    // signals (tracked reads, page re-runs). Inert until `runtime::script()`
+    // is used, but part of the documented builder shape from 0.8 on.
+    Router::builder()
+        .runtime()
+        .discover()
+        .app_context(db)
+        .build()
 }
 
 /// Connect to the database at `url`, creating the schema when the database
