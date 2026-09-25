@@ -7,13 +7,14 @@ use topcoat::runtime::RouterBuilderRuntimeExt;
 /// Build the application router with all discovered routes, layouts, and
 /// pages, sharing the given database handle via the app context.
 pub fn router(db: Db) -> Router {
-    // `.runtime()` mounts the browser-script routes required by topcoat 0.8
-    // signals (tracked reads, page re-runs). Inert until `runtime::script()`
-    // is used, but part of the documented builder shape from 0.8 on.
+    // Documented 0.9 builder shape: register discovery (and any application
+    // layers) first, then `.runtime()` last so the runtime layer wraps them
+    // and converts page re-run requests to GET before they run. Inert until
+    // `runtime::script()` is included in a document.
     Router::builder()
-        .runtime()
         .discover()
         .app_context(db)
+        .runtime()
         .build()
 }
 
