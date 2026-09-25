@@ -38,9 +38,7 @@ pub async fn root_layout(slot: Slot<'_>) -> Result<impl View> {
                         </nav>
                     </div>
                 </header>
-                <main class="container">
-                    (slot)
-                </main>
+                <main class="container">(slot)</main>
             </body>
         </html>
     })

@@ -71,7 +71,10 @@ async fn document_card(card: DocumentCard) -> Result<impl View> {
             <a class="document-title" href=(href)>(card.title)</a>
             <div class="document-content">(card.excerpt)</div>
             <div class="document-meta">
-                <span>"Updated: " (card.updated)</span>
+                <span>
+                    "Updated: "
+                    (card.updated)
+                </span>
             </div>
             if !card.tags.is_empty() {
                 <div class="tag-list">
@@ -220,10 +223,17 @@ pub async fn home(cx: &Cx) -> Result<impl View> {
             <div class="filter-bar">
                 <span class="filter-label">"Filters:"</span>
                 if let Some(ref tag) = tag_filter {
-                    <span class="tag">"#"(tag)</span>
+                    <span class="tag">
+                        "#"
+                        (tag)
+                    </span>
                 }
                 if searching {
-                    <span class="tag">"\""(&query_str)"\""</span>
+                    <span class="tag">
+                        "\""
+                        (&query_str)
+                        "\""
+                    </span>
                 }
                 <a class="btn btn-secondary btn-small" href="/">"Clear"</a>
             </div>

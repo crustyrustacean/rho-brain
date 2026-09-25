@@ -117,14 +117,24 @@ pub async fn view_document(cx: &Cx) -> Result<impl View> {
                 <h2 class="document-title">(doc.title)</h2>
                 <div class="detail-actions">
                     <a class="btn btn-primary" href=(edit_href)>"Edit"</a>
-                    <form method="post" action=(delete_action) onsubmit="return confirm('Delete this document? This cannot be undone.')">
+                    <form
+                        method="post"
+                        action=(delete_action)
+                        onsubmit="return confirm('Delete this document? This cannot be undone.')"
+                    >
                         <button type="submit" class="btn btn-danger">"Delete"</button>
                     </form>
                 </div>
             </div>
             <div class="document-meta">
-                <span>"Created: " (created)</span>
-                <span>"Updated: " (updated)</span>
+                <span>
+                    "Created: "
+                    (created)
+                </span>
+                <span>
+                    "Updated: "
+                    (updated)
+                </span>
             </div>
             if !tags.is_empty() {
                 <div class="tag-list">

@@ -261,30 +261,84 @@ async fn document_form(
             <form method="post" action=(action) data-draft=(draft_key)>
                 <div class="form-group">
                     <label for="title">"Title"</label>
-                    <input type="text" id="title" name="title" value=(title) required=(true)>
+                    <input
+                        type="text"
+                        id="title"
+                        name="title"
+                        value=(title)
+                        required=(true)
+                    >
                 </div>
                 <div class="editor" data-signals:mode="'split'">
-                    <div class="editor-toolbar" role="toolbar" aria-label="Editor view mode">
-                        <button type="button" class="mode-btn" data-class:active="$mode === 'write'" data-on:click="$mode = 'write'">"Write"</button>
-                        <button type="button" class="mode-btn active" data-class:active="$mode === 'split'" data-on:click="$mode = 'split'">"Split"</button>
-                        <button type="button" class="mode-btn" data-class:active="$mode === 'preview'" data-on:click="$mode = 'preview'">"Preview"</button>
+                    <div
+                        class="editor-toolbar"
+                        role="toolbar"
+                        aria-label="Editor view mode"
+                    >
+                        <button
+                            type="button"
+                            class="mode-btn"
+                            data-class:active="$mode === 'write'"
+                            data-on:click="$mode = 'write'"
+                        >
+                            "Write"
+                        </button>
+                        <button
+                            type="button"
+                            class="mode-btn active"
+                            data-class:active="$mode === 'split'"
+                            data-on:click="$mode = 'split'"
+                        >
+                            "Split"
+                        </button>
+                        <button
+                            type="button"
+                            class="mode-btn"
+                            data-class:active="$mode === 'preview'"
+                            data-on:click="$mode = 'preview'"
+                        >
+                            "Preview"
+                        </button>
                     </div>
-                    <div class="editor-panes split" data-class:split="$mode === 'split'">
-                        <div class="editor-pane editor-write-pane" data-show="$mode !== 'preview'">
-                            <textarea id="content" name="content" class="editor-textarea" placeholder="Write markdown here — the preview updates as you type. Leave empty to save a title-only draft." data-bind="content" data-on:input__debounce.400ms="@post('/documents/preview')">(content)</textarea>
+                    <div
+                        class="editor-panes split"
+                        data-class:split="$mode === 'split'"
+                    >
+                        <div
+                            class="editor-pane editor-write-pane"
+                            data-show="$mode !== 'preview'"
+                        >
+                            <textarea
+                                id="content"
+                                name="content"
+                                class="editor-textarea"
+                                placeholder="Write markdown here — the preview updates as you type. Leave empty to save a title-only draft."
+                                data-bind="content"
+                                data-on:input__debounce.400ms="@post('/documents/preview')"
+                            >
+                                (content)
+                            </textarea>
                             <div class="editor-statusline">
-                                <p class="form-hint">"Markdown is rendered on the document page."</p>
+                                <p class="form-hint">
+                                    "Markdown is rendered on the document page."
+                                </p>
                                 <span id="word-count" class="word-count">
                                     if words == 1 {
                                         "1 word"
                                     } else {
-                                        (words) " words"
+                                        (words)
+                                        " words"
                                     }
                                 </span>
                             </div>
                         </div>
-                        <div class="editor-pane editor-preview-pane" data-show="$mode !== 'write'">
-                            <div id="preview" class="markdown-content">(Unescaped::new_unchecked(initial_preview))</div>
+                        <div
+                            class="editor-pane editor-preview-pane"
+                            data-show="$mode !== 'write'"
+                        >
+                            <div id="preview" class="markdown-content">
+                                (Unescaped::new_unchecked(initial_preview))
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -292,7 +346,14 @@ async fn document_form(
                     <summary>"Tags &amp; metadata"</summary>
                     <div class="form-group">
                         <label for="tags">"Tags (comma separated)"</label>
-                        <input type="text" id="tags" name="tags" value=(tags) list="tag-suggestions" placeholder="tag1, tag2, tag3">
+                        <input
+                            type="text"
+                            id="tags"
+                            name="tags"
+                            value=(tags)
+                            list="tag-suggestions"
+                            placeholder="tag1, tag2, tag3"
+                        >
                         <datalist id="tag-suggestions">
                             for tag in all_tags {
                                 <option value=(tag)></option>
@@ -300,14 +361,27 @@ async fn document_form(
                         </datalist>
                     </div>
                     <div class="form-group">
-                        <label for="metadata">"Metadata (one key=value per line)"</label>
-                        <textarea id="metadata" name="metadata" class="metadata-input" placeholder="priority=high&#10;version=2&#10;pinned=true">(metadata)</textarea>
-                        <p class="form-hint">"Values are typed automatically: true/false become booleans, integers become numbers, everything else is text."</p>
+                        <label for="metadata">
+                            "Metadata (one key=value per line)"
+                        </label>
+                        <textarea
+                            id="metadata"
+                            name="metadata"
+                            class="metadata-input"
+                            placeholder="priority=high&#10;version=2&#10;pinned=true"
+                        >
+                            (metadata)
+                        </textarea>
+                        <p class="form-hint">
+                            "Values are typed automatically: true/false become booleans, integers become numbers, everything else is text."
+                        </p>
                     </div>
                 </details>
                 <div class="form-actions editor-actions">
                     <a class="btn btn-secondary" href=(cancel_href)>"Cancel"</a>
-                    <button type="submit" class="btn btn-primary">(submit_label)</button>
+                    <button type="submit" class="btn btn-primary">
+                        (submit_label)
+                    </button>
                 </div>
             </form>
         </div>
@@ -337,7 +411,8 @@ async fn form_page(
     state: DocumentFormState,
     all_tags: Vec<String>,
 ) -> Result<impl View> {
-    Ok(view! { cx =>
+    Ok(view! {
+        cx =>
         <h2 class="page-title">(spec.heading)</h2>
         document_form(
             action: spec.action,
@@ -425,8 +500,11 @@ pub async fn preview_document(
         render_markdown(content)
     };
 
-    let fragment = view! { cx =>
-        <div id="preview" class="markdown-content">(Unescaped::new_unchecked(rendered))</div>
+    let fragment = view! {
+        cx =>
+        <div id="preview" class="markdown-content">
+            (Unescaped::new_unchecked(rendered))
+        </div>
     };
     // Views are lazy in topcoat 0.7: resolve the fragment to its rendered
     // content before handing the HTML to the Datastar patch.
